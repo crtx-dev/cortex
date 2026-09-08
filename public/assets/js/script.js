@@ -589,11 +589,11 @@ async function loadAuthState(){
   if(!authState.configured){
     gate.hidden=false;$('#setupForm').hidden=false;$('#loginForm').hidden=true;
     $('#loginTOTPLabel').hidden=true;$('#googleLogin').hidden=true;
-    $('#authTitle').textContent='Secure Cortex';$('#authIntro').textContent='Set a password before using this Cortex instance.';requestAnimationFrame(()=>$('#setupPassword').focus());return false
+    $('#authTitle').hidden=false;$('#authIntro').hidden=false;$('#authTitle').textContent='Secure Cortex';$('#authIntro').textContent='Set a password before using this Cortex instance.';requestAnimationFrame(()=>$('#setupPassword').focus());return false
   }
   if(!authState.authenticated){
     gate.hidden=false;$('#setupForm').hidden=true;$('#loginForm').hidden=false;
-    $('#authTitle').textContent='Sign in to Cortex';$('#authIntro').textContent='Unlock this Cortex instance to continue.';
+    $('#authTitle').hidden=true;$('#authIntro').hidden=true;
     $('#loginTOTPLabel').hidden=!authState.totpEnabled;
     $('#googleLogin').hidden=!(authState.googleEnabled&&authState.googleConfigured);requestAnimationFrame(()=>$('#loginPassword').focus());return false
   }
