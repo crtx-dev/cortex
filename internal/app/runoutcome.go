@@ -2,9 +2,10 @@ package app
 
 import (
 	"io"
-	"net/url"
 	"strings"
 	"sync"
+
+	coreagent "github.com/gantry-dev/gantry-core/agent"
 )
 
 // runCause enumerates the local cancellation causes a run may record before
@@ -50,23 +51,7 @@ const (
 // terminating cause is accepted forces a failed outcome even when a later
 // cancellation was requested.
 type runState struct {
-	mu       sync.Mutex
-	cause    runCause
-	seq      uint64
-	errSeq   uint64
-	causeSeq uint64
-	// stopSeq records the sequence at which the main session's valid completion
-	// evidence (a step_finish with reason "stop") was observed. It is drawn from
-	// the same observation sequence as errSeq so the classifier can establish
-	// whether an error occurred before or after completion. Zero means no valid
-	// completion evidence was seen.
-	stopSeq uint64
-	// providerErrSeq records the sequence at which an authoritative main-session
-	// provider failure (e.g. insufficient balance) was observed. It is separate
-	// from the local cause machine so provider failures and local cancellation
-	// never conflate; the classifier compares sequences chronologically.
-	providerErrSeq uint64
-	sealed         bool
+	core *coreagent.RunState
 }
 
 // runStateSnapshot is a consistent view of the machine used by the classifier.
@@ -79,126 +64,63 @@ type runStateSnapshot struct {
 	sealed         bool
 }
 
-func newRunState() *runState { return &runState{} }
+func newRunState() *runState { return &runState{core: coreagent.NewRunState()} }
 
 // recordProviderFailure records the sequence at which an authoritative
 // main-session provider failure was observed (only the first is kept). It is
 // not a local termination cause.
 func (s *runState) recordProviderFailure() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.seq++
-	if s.providerErrSeq == 0 {
-		s.providerErrSeq = s.seq
-	}
+	s.core.RecordProviderFailure()
 }
 
 // recordCause accepts a cause only when the transition is legal and the run
 // has not been sealed. It returns false when the request must be ignored (for
 // example a late Stop after the process already completed).
 func (s *runState) recordCause(c runCause) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.sealed {
-		return false
-	}
-	switch c {
-	case causeRequestCanceled:
-		// Only while no more specific cause exists.
-		if s.cause != causeNone {
-			return false
-		}
-	case causeUserStop:
-		// An accepted authenticated Stop may upgrade a disconnect, but never
-		// an already-triggered output limit or service shutdown.
-		if s.cause != causeNone && s.cause != causeRequestCanceled {
-			return false
-		}
-	case causeOutputLimit:
-		// Once the limiter actually triggers it is authoritative, but a
-		// confirmed Stop is never downgraded to a limit.
-		if s.cause != causeNone && s.cause != causeRequestCanceled && s.cause != causeUserStop {
-			return false
-		}
-	case causeServiceShutdown:
-		// Shutdown only when no prior explicit Stop/output limit caused the
-		// termination; it may still upgrade a plain disconnect.
-		if s.cause != causeNone && s.cause != causeRequestCanceled {
-			return false
-		}
-	default:
-		return false
-	}
-	s.seq++
-	s.cause = c
-	s.causeSeq = s.seq
-	return true
+	return s.core.RecordCause(coreagent.Cause(c))
 }
 
 // observeError records the sequence at which an authoritative stdout
 // `type:"error"` event was first seen. Only the first observation is kept so
 // the error-before-cause ordering stays stable.
 func (s *runState) observeError() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.seq++
-	if s.errSeq == 0 {
-		s.errSeq = s.seq
-	}
+	s.core.RecordError()
 }
 
 // nextSeq allocates the next observation sequence without recording any
 // semantic. Used to capture the chronological position of a candidate error
 // whose session is only resolved after the stream ends.
 func (s *runState) nextSeq() uint64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.seq++
-	return s.seq
+	return s.core.NextSequence()
 }
 
 // recordErrorAt promotes a candidate error captured earlier to the recorded
 // error sequence, preserving its chronological position relative to causes.
 func (s *runState) recordErrorAt(seq uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if seq > 0 && s.errSeq == 0 {
-		s.errSeq = seq
-	}
+	s.core.RecordErrorAt(seq)
 }
 
 // recordStopAt promotes a candidate valid-completion (step_finish "stop")
 // observation captured earlier to the recorded stop sequence, preserving its
 // chronological position relative to errors.
 func (s *runState) recordStopAt(seq uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if seq > 0 && s.stopSeq == 0 {
-		s.stopSeq = seq
-	}
+	s.core.RecordStopAt(seq)
 }
 
 // recordProviderFailureAt promotes a candidate provider failure captured
 // earlier to the recorded provider sequence, preserving chronological order.
 func (s *runState) recordProviderFailureAt(seq uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if seq > 0 && s.providerErrSeq == 0 {
-		s.providerErrSeq = seq
-	}
+	s.core.RecordProviderFailureAt(seq)
 }
 
 // seal closes the machine so late requests can no longer rewrite history.
 func (s *runState) seal() {
-	s.mu.Lock()
-	s.sealed = true
-	s.mu.Unlock()
+	s.core.Seal()
 }
 
 func (s *runState) snapshot() runStateSnapshot {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return runStateSnapshot{cause: s.cause, errSeq: s.errSeq, causeSeq: s.causeSeq, stopSeq: s.stopSeq, providerErrSeq: s.providerErrSeq, sealed: s.sealed}
+	snapshot := s.core.Snapshot()
+	return runStateSnapshot{cause: runCause(snapshot.Cause), errSeq: snapshot.ErrorSequence, causeSeq: snapshot.CauseSequence, stopSeq: snapshot.StopSequence, providerErrSeq: snapshot.ProviderErrorSequence, sealed: snapshot.Sealed}
 }
 
 // exitStatus describes the raw process termination facts. Exit code and signal
@@ -224,62 +146,7 @@ type exitStatus struct {
 // failed with the provider cause. A local stop/request cancellation/output
 // limit/shutdown accepted before the provider error keeps its local outcome.
 func classifyRun(state runStateSnapshot, stdoutError bool, validStop bool, exit exitStatus, providerCause runCause) runOutcome {
-	// Provider failure observed with no local cause, or before the local cause,
-	// and before valid completion evidence.
-	if providerCause != "" {
-		if state.stopSeq == 0 || state.providerErrSeq < state.stopSeq {
-			if state.cause == causeNone || (state.causeSeq > 0 && state.providerErrSeq < state.causeSeq) {
-				return outcomeFailed
-			}
-		}
-	}
-	// Authoritative stdout error observed before valid completion evidence (or
-	// with no completion evidence at all) forces failure, regardless of any
-	// later stop. An error after the stop is post-completion evidence.
-	if stdoutError {
-		beforeStop := state.stopSeq == 0 || (state.errSeq > 0 && state.errSeq < state.stopSeq)
-		if beforeStop {
-			if state.cause == causeNone || (state.errSeq > 0 && state.causeSeq > 0 && state.errSeq < state.causeSeq) {
-				return outcomeFailed
-			}
-		}
-	}
-	switch state.cause {
-	case causeOutputLimit:
-		// 2. Known output limit.
-		return outcomeTruncated
-	case causeUserStop, causeRequestCanceled:
-		// 3. Known user Stop or request/client cancellation.
-		return outcomeCancelled
-	case causeServiceShutdown:
-		// 4. Known service shutdown.
-		return outcomeInterrupted
-	}
-	// 5. Unexpected termination by signal with no local cause is a genuine
-	//    runtime failure (OOM, external kill), not a user cancellation.
-	if exit.signaled {
-		return outcomeFailed
-	}
-	// 6. Ordinary non-zero exit code with valid completion evidence: the
-	//    response completed but OpenCode reported a problem. A pre-completion
-	//    stdout error already forced failure above; a post-completion error is
-	//    process evidence retained as a warning, never a failed answer.
-	if exit.exited && exit.exitCode != 0 && validStop {
-		return outcomeCompletedWError
-	}
-	// 7. Ordinary non-zero exit without valid completion evidence.
-	if exit.exited && exit.exitCode != 0 {
-		return outcomeFailed
-	}
-	// 8. Clean exit with completion evidence.
-	if exit.exited && exit.exitCode == 0 && validStop {
-		return outcomeCompleted
-	}
-	// 9. Clean exit without required completion evidence.
-	if exit.exited && exit.exitCode == 0 {
-		return outcomeFailed
-	}
-	return outcomeFailed
+	return runOutcome(coreagent.Classify(coreagent.Snapshot{Cause: coreagent.Cause(state.cause), ErrorSequence: state.errSeq, CauseSequence: state.causeSeq, StopSequence: state.stopSeq, ProviderErrorSequence: state.providerErrSeq, Sealed: state.sealed}, stdoutError, validStop, coreagent.ExitStatus{Exited: exit.exited, ExitCode: exit.exitCode, Signaled: exit.signaled, Signal: exit.signal}, coreagent.Cause(providerCause)))
 }
 
 // classifyProviderError recognizes a provider insufficient-balance failure
@@ -300,21 +167,7 @@ func classifyRun(state runStateSnapshot, stdoutError bool, validStop bool, exit 
 // A bare "402", "payment required", "quota", "limit", "credit", or "billing"
 // mention alone is not sufficient.
 func classifyProviderError(msg, code string, statusCode int) (providerInsufficientBalance bool) {
-	lower := strings.ToLower(strings.TrimSpace(msg))
-	codeLower := strings.ToLower(strings.TrimSpace(code))
-	// Explicit structured code.
-	if codeLower == "insufficient_balance" || codeLower == "insufficient balance" || codeLower == "account_balance_insufficient" || codeLower == "billing_insufficient_balance" {
-		return true
-	}
-	// Structured provider error carrying HTTP 402 Payment Required.
-	if statusCode == 402 {
-		return true
-	}
-	// Exact case-insensitive phrase, alone or embedded in a provider message.
-	if strings.Contains(lower, "insufficient balance") {
-		return true
-	}
-	return false
+	return coreagent.ClassifyProviderError(msg, code, statusCode)
 }
 
 // sanitizeBillingURL validates a provider-supplied billing URL strictly. It
@@ -322,33 +175,7 @@ func classifyProviderError(msg, code string, statusCode int) (providerInsufficie
 // information, no explicit port, and a normal absolute URL. The real
 // /workspace/... path is preserved. Returns "" for anything else.
 func sanitizeBillingURL(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || len(raw) > 512 {
-		return ""
-	}
-	// Reject control characters and encoded-authority tricks up front.
-	for _, r := range raw {
-		if r < 0x20 || r == 0x7f {
-			return ""
-		}
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return ""
-	}
-	if u.Scheme != "https" || u.Host == "" || u.User != nil || u.Port() != "" || u.RawQuery != "" || u.Fragment != "" {
-		return ""
-	}
-	// Exact hostname only; reject trailing-dot, case tricks, or alternate hosts.
-	if u.Hostname() != "opencode.ai" {
-		return ""
-	}
-	// Reject any path that could be interpreted as an open redirect / unsafe.
-	if u.Path == "" || !strings.HasPrefix(u.Path, "/workspace/") {
-		return ""
-	}
-	// Re-encode cleanly as an absolute https URL.
-	return u.String()
+	return coreagent.SanitizeBillingURL(raw)
 }
 
 // tailCapture drains an io.Reader to EOF in the background while retaining

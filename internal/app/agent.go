@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	coreagent "github.com/gantry-dev/gantry-core/agent"
 )
 
 const (
@@ -776,38 +778,7 @@ func (a *App) storageFailure(runID, clientSession, sessionID, stage string, err 
 //   - no overlap -> persist the full recovered response (genuinely new)
 //   - empty recovered -> suppress
 func reconcileRecovered(streamed, recovered string) (text string, suppressed, replace bool) {
-	s := strings.TrimSpace(streamed)
-	r := strings.TrimSpace(recovered)
-	if r == "" {
-		return "", true, false
-	}
-	if s == "" {
-		return r, false, false
-	}
-	if r == s || strings.Contains(s, r) {
-		return "", true, false
-	}
-	// Recovered starts with streamed -> only the missing suffix is new.
-	if strings.HasPrefix(r, s) {
-		return strings.TrimSpace(r[len(s):]), false, false
-	}
-	// Streamed is a suffix of recovered: appending a missing prefix after the
-	// existing suffix would produce the wrong order. The full recovered
-	// response replaces the streamed fragment.
-	if strings.HasSuffix(r, s) {
-		return r, false, true
-	}
-	// Partial overlap: a suffix of streamed is a prefix of recovered, so the
-	// recovered text continues the streamed text; the new tail is append-safe.
-	for i := len(s); i > 0; i-- {
-		if strings.HasPrefix(r, s[len(s)-i:]) {
-			// s[len(s)-i:] has length i and is a prefix of r; the new tail is
-			// r[i:].
-			return strings.TrimSpace(r[i:]), false, false
-		}
-	}
-	// No overlap: genuinely new content.
-	return r, false, false
+	return coreagent.ReconcileRecovered(streamed, recovered)
 }
 
 // sanitizeImageURL validates or rewrites an unsafe file URL before persistence
@@ -1379,14 +1350,7 @@ func parseModelLines(out []byte, providerID string) []string {
 // Production runs at WARN so routine INFO lifecycle logs do not flood stderr;
 // INFO diagnostics remain available through an opt-in debug setting.
 func agentRunArgs(workspace, modelRef, session string, files []string, prompt string) []string {
-	args := []string{"--print-logs", "--log-level", "WARN", "run", "--format", "json", "--auto", "--dir", workspace, "--model", modelRef}
-	if s := strings.TrimSpace(session); s != "" {
-		args = append(args, "--session", s)
-	}
-	for _, p := range files {
-		args = append(args, "--file", p)
-	}
-	return append(args, "--", prompt)
+	return coreagent.RunArgs(workspace, modelRef, strings.TrimSpace(session), files, prompt)
 }
 
 // openCodeVersion returns the installed OpenCode version captured at first

@@ -34,3 +34,12 @@ the tag: pushing `vX.Y.Z` runs verification, builds six archives, writes
 
 Never overwrite an existing tag or asset, publish unverified binaries, or let a
 prerelease become the stable `latest` channel.
+
+## Gantry Core dogfood
+
+Cortex delegates provider-neutral agent state/outcome/recovery behavior,
+conversation merge contracts, and symlink-aware workspace resolution to the
+sibling `gantry-core` checkout through the local replacement in `go.mod`.
+Keep HTTP, persistence, authentication and Cortex-specific policy here. During
+the extraction phase, run `../../gantry-core/scripts/test-workspace.sh` so a
+shared-contract change is exercised through Cortex and Warden together.

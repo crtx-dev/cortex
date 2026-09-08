@@ -4,11 +4,11 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 	"time"
+
+	coreconversations "github.com/gantry-dev/gantry-core/conversations"
+	coreworkspace "github.com/gantry-dev/gantry-core/workspace"
 )
 
 // Workspace availability categories returned to the client for each stored
@@ -22,17 +22,7 @@ const (
 	wsSymlinkEsc   = "symlink-escape"
 )
 
-type conversationEvent struct {
-	Kind      string `json:"kind"`
-	Text      string `json:"text"`
-	Name      string `json:"name,omitempty"`
-	CreatedAt int64  `json:"createdAt,omitempty"`
-	// RunID is the owning run identifier for task snapshot ownership. It is a
-	// validated opaque token (empty for client-authored events without a run),
-	// persisted so a reload can reject stale task events from a superseded run
-	// instead of treating them as the current run's tasks.
-	RunID string `json:"runId,omitempty"`
-}
+type conversationEvent = coreconversations.Event
 
 type conversation struct {
 	ID              string              `json:"id"`
@@ -57,62 +47,25 @@ type conversation struct {
 // renamed, inaccessible or outside the current root. Execution itself still
 // goes through the strict resolve boundary.
 func (a *App) workspaceStatus(workspace string) string {
-	w := strings.TrimSpace(workspace)
-	if w == "" || w == "/" {
-		if _, err := os.Stat(a.root); err == nil {
-			return wsAvailable
+	resolver := a.workspaceResolver
+	if resolver == nil {
+		var err error
+		resolver, err = coreworkspace.New(a.root)
+		if err != nil {
+			return wsInaccessible
 		}
-		return wsMissing
 	}
-	var p string
-	if filepath.IsAbs(w) {
-		p = filepath.Clean(w)
-	} else {
-		p = filepath.Join(a.root, w)
-	}
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return wsInaccessible
-	}
-	rel, err := filepath.Rel(a.root, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return wsOutsideRoot
-	}
-	real, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return wsMissing
-		}
-		return wsInaccessible
-	}
-	rel, err = filepath.Rel(a.root, real)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return wsSymlinkEsc
-	}
-	return wsAvailable
+	return string(resolver.Status(workspace))
 }
 
 func validRecordID(id string) bool {
-	if id == "" || len(id) > 128 {
-		return false
-	}
-	for _, r := range id {
-		if !(r == '-' || r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z') {
-			return false
-		}
-	}
-	return true
+	return coreconversations.ValidID(id)
 }
 
 // hasControlChars reports whether s contains CR, LF, NUL or other control
 // characters that must not reach stored conversation metadata.
 func hasControlChars(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] < 0x20 || s[i] == 0x7f {
-			return true
-		}
-	}
-	return false
+	return coreconversations.HasControlCharacters(s)
 }
 
 func (a *App) conversationsAPI(w http.ResponseWriter, r *http.Request) {
@@ -320,34 +273,7 @@ func eventSignature(e conversationEvent) string {
 // server events while preserving legitimately repeated identical messages:
 // a client event is dropped only when an equal server event is still unmatched.
 func mergeConversationEvents(server, client []conversationEvent) []conversationEvent {
-	available := map[string]int{}
-	serverSig := map[string]bool{}
-	for _, e := range server {
-		available[eventSignature(e)]++
-		serverSig[eventSignature(e)] = true
-	}
-	out := append([]conversationEvent{}, server...)
-	for _, e := range client {
-		sig := eventSignature(e)
-		if available[sig] > 0 {
-			available[sig]--
-			continue
-		}
-		out = append(out, e)
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].CreatedAt != out[j].CreatedAt {
-			return out[i].CreatedAt < out[j].CreatedAt
-		}
-		// Server events precede client events on timestamp ties so the
-		// authoritative copy is not shadowed by its duplicate.
-		return serverSig[eventSignature(out[i])] && !serverSig[eventSignature(out[j])]
-	})
-	// Terminal-event supersession: a run may have multiple durable terminal
-	// markers (e.g. an ordinary "completed" marker superseded by a storage
-	// failure). The latest marker per run is authoritative; earlier markers are
-	// retained only as delivery history, not as a competing final outcome.
-	return supersedeTerminalMarkers(supersedeAssistantPrefixes(out))
+	return coreconversations.MergeEvents(server, client)
 }
 
 // replRunID extracts the run ID from a "repl:<id>" recovery-replacement marker

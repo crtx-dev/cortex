@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	coreworkspace "github.com/gantry-dev/gantry-core/workspace"
 )
 
 type Options struct {
@@ -25,6 +27,7 @@ type Options struct {
 }
 type App struct {
 	listen, root, dataDir string
+	workspaceResolver     *coreworkspace.Resolver
 	trustProxy            bool
 	publicOrigin          *url.URL
 	db                    *sql.DB
@@ -103,6 +106,10 @@ func New(o Options) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	resolver, err := coreworkspace.New(root)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(o.DataDir, 0700); err != nil {
 		return nil, err
 	}
@@ -118,7 +125,7 @@ func New(o Options) (*App, error) {
 			return nil, errors.New("public origin must be an http(s) origin without a path")
 		}
 	}
-	a := &App{listen: o.Listen, root: root, dataDir: o.DataDir, trustProxy: o.TrustProxy, publicOrigin: publicOrigin, db: db, mux: http.NewServeMux(), settings: Settings{ActiveProvider: "opencode", Keys: map[string]string{}, Models: map[string]string{}}, sessions: map[string]sessionInfo{}, loginFailures: map[string][]time.Time{}, oauthStates: map[string]oauthState{}, pendingTOTP: map[string]pendingTOTP{}, usedTOTP: map[string]time.Time{}, activeRuns: map[string]*activeRun{}, runSlots: make(chan struct{}, 4), requestSlots: make(chan struct{}, 128)}
+	a := &App{listen: o.Listen, root: root, workspaceResolver: resolver, dataDir: o.DataDir, trustProxy: o.TrustProxy, publicOrigin: publicOrigin, db: db, mux: http.NewServeMux(), settings: Settings{ActiveProvider: "opencode", Keys: map[string]string{}, Models: map[string]string{}}, sessions: map[string]sessionInfo{}, loginFailures: map[string][]time.Time{}, oauthStates: map[string]oauthState{}, pendingTOTP: map[string]pendingTOTP{}, usedTOTP: map[string]time.Time{}, activeRuns: map[string]*activeRun{}, runSlots: make(chan struct{}, 4), requestSlots: make(chan struct{}, 128)}
 	if err := a.loadSettings(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("load settings: %w", err)
@@ -473,34 +480,19 @@ func (a *App) health(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, map[string]any{"ok": true})
 }
 func (a *App) resolve(p string) (string, error) {
-	p = strings.TrimSpace(p)
-	if p == "" || p == "/" {
-		return a.root, nil
+	resolver := a.workspaceResolver
+	if resolver == nil {
+		var err error
+		resolver, err = coreworkspace.New(a.root)
+		if err != nil {
+			return "", err
+		}
 	}
-	if filepath.IsAbs(p) {
-		p = filepath.Clean(p)
-	} else {
-		p = filepath.Join(a.root, p)
-	}
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", err
-	}
-	rel, err := filepath.Rel(a.root, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+	resolved, err := resolver.Resolve(p)
+	if errors.Is(err, coreworkspace.ErrEscape) {
 		return "", errors.New("path escapes workspace root")
 	}
-	// The lexical check above is not sufficient: an in-root symlink may target
-	// arbitrary host data. Resolve the existing target again at the point of use.
-	real, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		return "", errors.New("path is unavailable")
-	}
-	rel, err = filepath.Rel(a.root, real)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return "", errors.New("path escapes workspace root")
-	}
-	return real, nil
+	return resolved, err
 }
 
 type fileEntry struct {
