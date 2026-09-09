@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	coreagent "github.com/gantry-dev/gantry-core/agent"
+	coreagent "github.com/gantry-tools/gantry-core/agent"
 )
 
 // runCause enumerates the local cancellation causes a run may record before

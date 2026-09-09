@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	coreagent "github.com/gantry-dev/gantry-core/agent"
+	coreagent "github.com/gantry-tools/gantry-core/agent"
 )
 
 const (

@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	coreworkspace "github.com/gantry-dev/gantry-core/workspace"
+	coreworkspace "github.com/gantry-tools/gantry-core/workspace"
 )
 
 type Options struct {

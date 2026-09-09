@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	coreconversations "github.com/gantry-dev/gantry-core/conversations"
-	coreworkspace "github.com/gantry-dev/gantry-core/workspace"
+	coreconversations "github.com/gantry-tools/gantry-core/conversations"
+	coreworkspace "github.com/gantry-tools/gantry-core/workspace"
 )
 
 // Workspace availability categories returned to the client for each stored
