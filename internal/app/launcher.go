@@ -22,6 +22,10 @@ func (a *App) launcherRoot(static http.Handler) http.HandlerFunc {
 			return
 		}
 		if r.URL.Query().Has("config") {
+			if !a.authenticated(r) {
+				corelauncher.WriteAccessError(w, http.StatusUnauthorized, "Cortex", "C")
+				return
+			}
 			a.serveLauncher(static, w, r)
 			return
 		}

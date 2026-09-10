@@ -30,7 +30,7 @@ func TestLauncherRootCardinalityAndConfigPage(t *testing.T) {
 	if got := request("/"); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), "Cortex instances") {
 		t.Fatalf("multiple instances: %d %q", got.Code, got.Body.String())
 	}
-	if got := request("/?config"); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), "Cortex instances") {
+	if got := request("/?config"); got.Code != http.StatusUnauthorized || !strings.Contains(got.Body.String(), "Authentication required") || strings.Contains(got.Body.String(), "Current instances") {
 		t.Fatalf("config page: %d %q", got.Code, got.Body.String())
 	}
 }
