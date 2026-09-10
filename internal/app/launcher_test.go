@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestLauncherRootCardinalityAndConfigAuthorization(t *testing.T) {
+func TestLauncherRootCardinalityAndConfigPage(t *testing.T) {
 	a := hardeningTestApp(t)
 	h := a.Handler()
 	request := func(path string) *httptest.ResponseRecorder {
@@ -30,8 +30,8 @@ func TestLauncherRootCardinalityAndConfigAuthorization(t *testing.T) {
 	if got := request("/"); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), "Cortex instances") {
 		t.Fatalf("multiple instances: %d %q", got.Code, got.Body.String())
 	}
-	if got := request("/?config"); got.Code != http.StatusFound || !strings.Contains(got.Header().Get("Location"), "/app/?return=") {
-		t.Fatalf("config authorization: %d %q", got.Code, got.Header().Get("Location"))
+	if got := request("/?config"); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), "Cortex instances") {
+		t.Fatalf("config page: %d %q", got.Code, got.Body.String())
 	}
 }
 
