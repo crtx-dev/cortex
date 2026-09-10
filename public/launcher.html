@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="description" content="Open and configure your local Cortex installation.">
+		<meta name="color-scheme" content="dark">
+		<title>Cortex</title>
+		<link rel="icon" href="/assets/images/favicon.svg" type="image/svg+xml">
+		<link rel="stylesheet" href="/assets/css/launcher.css">
+		<script defer src="/assets/js/launcher.js"></script>
+	</head>
+	<body>
+		<main class="instance-app" data-instance-launcher data-product="cortex" data-product-title="Cortex">
+		  <section class="launcher-view" data-launcher-view hidden>
+		    <header class="page-header">
+		      <div class="brand"><span class="brand-mark">C</span><div><h1>Cortex</h1><p>Choose an instance to open.</p></div></div>
+		      <button class="icon-button" type="button" data-open-config aria-label="Configure instances" title="Configure instances">&#9881;</button>
+		    </header>
+		    <div class="instance-grid" data-instance-grid></div>
+		    <nav class="pager" data-launcher-pager aria-label="Instance pages">
+		      <button type="button" data-prev>Prev</button>
+		      <label>Page <input type="number" min="1" step="1" value="1" data-page-input aria-label="Page number"> <span>of <strong data-page-count>1</strong></span></label>
+		      <button type="button" data-next>Next</button>
+		    </nav>
+		  </section>
+		  <section class="config-view" data-config-view hidden>
+		    <header class="page-header">
+		      <div class="brand"><span class="brand-mark">C</span><div><h1>Cortex instances</h1><p>Add and manage the instances available from this launcher.</p></div></div>
+		      <button class="secondary" type="button" data-back-launcher>Launcher</button>
+		    </header>
+		    <div class="modal-backdrop" data-instance-modal hidden>
+		      <section class="modal panel" role="dialog" aria-modal="true" aria-labelledby="instance-modal-title">
+		        <form class="instance-form" data-instance-form novalidate>
+		          <input type="hidden" name="edit-id">
+		          <div class="modal-header"><h2 id="instance-modal-title" data-form-title>Add instance</h2><button class="icon-button close-button" type="button" data-cancel-edit aria-label="Close">&times;</button></div>
+		          <div class="form-grid">
+		            <label>Name<input name="name" type="text" autocomplete="off" placeholder="e.g. Local or NUC" required></label>
+		            <label>Domain or IP<input name="domain" type="text" inputmode="url" autocomplete="url" placeholder="localhost or cortex.example.com" spellcheck="false" required></label>
+		            <label><span class="field-label">Port <span class="optional">(optional)</span></span><input name="port" type="number" min="1" max="65535" step="1" inputmode="numeric" autocomplete="off" placeholder="e.g. 7331"></label>
+		          </div>
+		          <div class="form-footer"><div class="error" data-error role="alert" hidden></div><button class="secondary" type="button" data-cancel-modal>Cancel</button><button class="primary" type="submit" data-submit>Add</button></div>
+		        </form>
+		      </section>
+		    </div>
+		    <section class="panel list-panel">
+      <div class="table-toolbar"><div><h2>Current instances</h2><p><span data-instance-count>0</span> configured</p></div><div class="toolbar-actions"><button class="secondary" type="button" data-import>Import</button><button class="secondary" type="button" data-export>Export</button><button class="primary" type="button" data-add-instance>Add</button><button class="danger" type="button" data-delete-selected disabled>Delete</button><input type="file" accept="application/json,.json" data-import-file hidden></div></div>
+      <p class="status" data-status role="status" hidden></p>
+		      <div class="table-wrap">
+		        <table>
+		          <thead><tr><th class="check"><input type="checkbox" data-select-page aria-label="Select instances on this page"></th><th>Name</th><th>Domain</th><th>Port</th><th class="actions-col">Actions</th></tr></thead>
+		          <tbody data-instance-table></tbody>
+		        </table>
+		        <div class="empty-state" data-empty>No instances configured yet.</div>
+		      </div>
+		      <nav class="pager" data-config-pager aria-label="Configuration pages">
+		        <button type="button" data-prev>Prev</button>
+		        <label>Page <input type="number" min="1" step="1" value="1" data-page-input aria-label="Page number"> <span>of <strong data-page-count>1</strong></span></label>
+		        <button type="button" data-next>Next</button>
+		      </nav>
+		    </section>
+		  </section>
+		</main>
+	</body>
+</html>

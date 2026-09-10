@@ -253,7 +253,11 @@ func (a *App) routes() {
 	for _, route := range a.apiRoutes() {
 		a.mux.Handle(route.Policy.Path, enforceRoutePolicy(route.Policy, route.Handler))
 	}
-	a.mux.Handle("/", http.FileServer(http.FS(cortex.PublicFS())))
+	static := http.FileServer(http.FS(cortex.PublicFS()))
+	a.mux.Handle("/assets/", static)
+	a.mux.HandleFunc("/app", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/", http.StatusPermanentRedirect) })
+	a.mux.Handle("/app/", http.StripPrefix("/app", static))
+	a.mux.Handle("/", a.launcherRoot(static))
 }
 func jsonOut(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")

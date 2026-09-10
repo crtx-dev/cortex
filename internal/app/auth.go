@@ -687,7 +687,7 @@ func (a *App) googleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.newSessionCookie(w, r)
-	http.Redirect(w, r, "/", 302)
+	http.Redirect(w, r, "/app/", 302)
 }
 func (a *App) authDebugHash() string {
 	a.mu.RLock()

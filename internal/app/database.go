@@ -94,6 +94,17 @@ var databaseMigrations = []migration{
 		name:    "durable task run identity",
 		sql:     `ALTER TABLE conversation_events ADD COLUMN run_id TEXT NOT NULL DEFAULT '';`,
 	},
+	{
+		version: 6,
+		name:    "embedded instance launcher",
+		sql: `CREATE TABLE launcher_instances (
+			id TEXT PRIMARY KEY,
+			position INTEGER NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			domain TEXT NOT NULL,
+			port INTEGER CHECK(port BETWEEN 1 AND 65535)
+		);`,
+	},
 }
 
 func openDatabase(dataDir string) (*sql.DB, error) {

@@ -31,6 +31,8 @@ func (a *App) apiRoutes() []registeredRoute {
 	get := []string{http.MethodGet}
 	post := []string{http.MethodPost}
 	return []registeredRoute{
+		public("/api/launcher/instances", get, a.launcherInstances),
+		session("/api/launcher/config", []string{http.MethodPut}, a.launcherConfig),
 		public("/api/auth/state", get, a.authState),
 		public("/api/auth/setup", post, a.authSetup),
 		public("/api/auth/login", post, a.authLogin),

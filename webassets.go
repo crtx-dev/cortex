@@ -7,7 +7,7 @@ import (
 
 // PublicFS contains the Nift-generated Cortex frontend.
 //
-//go:embed public/* public/assets/css/* public/assets/js/*
+//go:embed public/* public/assets/css/* public/assets/images/* public/assets/js/*
 var publicFS embed.FS
 
 // PublicFS returns the generated public/ tree for the Cortex HTTP server.
