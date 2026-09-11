@@ -31,9 +31,9 @@ func TestOnlyDeliberateRoutesArePublic(t *testing.T) {
 	a := &App{}
 	want := map[string]bool{
 		"/api/launcher/instances": true,
-		"/api/auth/state": true, "/api/auth/setup": true, "/api/auth/login": true,
-		"/api/auth/google/start": true, "/api/auth/google/callback": true,
-		"/api/health": true,
+		"/api/auth/state":         true, "/api/auth/setup": true, "/api/auth/login": true,
+		"/api/auth/google/start":  true, "/api/auth/google/callback": true,
+		"/api/health":             true,
 	}
 	for _, route := range a.apiRoutes() {
 		if got := route.Policy.Boundary == boundaryPublic; got != want[route.Policy.Path] {

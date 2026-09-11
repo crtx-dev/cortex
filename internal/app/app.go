@@ -255,7 +255,9 @@ func (a *App) routes() {
 	}
 	static := http.FileServer(http.FS(cortex.PublicFS()))
 	a.mux.Handle("/assets/", static)
-	a.mux.HandleFunc("/app", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/", http.StatusPermanentRedirect) })
+	a.mux.HandleFunc("/app", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/app/", http.StatusPermanentRedirect)
+	})
 	a.mux.Handle("/app/", http.StripPrefix("/app", static))
 	a.mux.Handle("/", a.launcherRoot(static))
 }
