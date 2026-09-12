@@ -29,6 +29,19 @@ func init() {
 	installHealthDeadline = 100 * time.Millisecond
 }
 
+func TestServiceLifecycleSuccessGrammar(t *testing.T) {
+	want := map[string]string{
+		"start":   "cortex.service started.",
+		"stop":    "cortex.service stopped.",
+		"restart": "cortex.service restarted.",
+	}
+	for verb, expected := range want {
+		if got := serviceLifecycleSuccess(verb); got != expected {
+			t.Fatalf("%s message = %q, want %q", verb, got, expected)
+		}
+	}
+}
+
 type fakeRunner struct {
 	mu      sync.Mutex
 	calls   []string

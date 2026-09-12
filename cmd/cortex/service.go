@@ -1309,6 +1309,7 @@ func runService(args []string, version string) int {
 			fmt.Fprintln(os.Stderr, "cortex:", err)
 			return 1
 		}
+		fmt.Fprintln(os.Stdout, serviceLifecycleSuccess(cmd))
 		return 0
 	case "status":
 		if err := m.status(os.Stdout, version); err != nil {
@@ -1332,4 +1333,11 @@ func runService(args []string, version string) int {
 		fmt.Fprintf(os.Stderr, "cortex: unknown service command %q\n\nUsage: cortex service <install|start|stop|restart|status|logs|uninstall> [flags]\n", cmd)
 		return 2
 	}
+}
+
+func serviceLifecycleSuccess(verb string) string {
+	words := map[string]string{
+		"start": "started", "stop": "stopped", "restart": "restarted",
+	}
+	return "cortex.service " + words[verb] + "."
 }
