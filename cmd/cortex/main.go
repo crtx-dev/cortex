@@ -10,7 +10,7 @@ import (
 	"github.com/crtx-dev/cortex/internal/app"
 )
 
-var version = "0.1.1"
+var version = "0.1.2"
 
 func main() {
 	if len(os.Args) > 1 {
