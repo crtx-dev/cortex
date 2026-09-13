@@ -92,3 +92,23 @@ func enforceRoutePolicy(policy routePolicy, next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// OperationRoute describes the runtime API surface used by the Phase-5
+// operation coverage contract. It is derived from the same route table used by
+// the HTTP server so coverage cannot silently drift from registration.
+type OperationRoute struct {
+	Method   string
+	Path     string
+	Boundary string
+}
+
+func OperationRouteInventory() []OperationRoute {
+	a := &App{}
+	var out []OperationRoute
+	for _, route := range a.apiRoutes() {
+		for _, method := range route.Policy.Methods {
+			out = append(out, OperationRoute{Method: method, Path: route.Policy.Path, Boundary: string(route.Policy.Boundary)})
+		}
+	}
+	return out
+}

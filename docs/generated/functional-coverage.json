@@ -1,0 +1,422 @@
+{
+  "schema_version": 1,
+  "project": "cortex",
+  "operations": [
+    {
+      "operation": "cortex.agent.cancel",
+      "website": true,
+      "method": "POST",
+      "route": "/api/agent/cancel",
+      "cli": "agent cancel",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.agent.cancel.request.v1",
+      "output_schema": "cortex.agent.cancel.response.v1",
+      "tests": [
+        "internal/app/agent_outcome_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.agent.diagnostics",
+      "website": true,
+      "method": "GET",
+      "route": "/api/agent/run-diagnostics",
+      "cli": "agent diagnostics",
+      "cli_observed": true,
+      "boundary": "session",
+      "output_schema": "cortex.agent.diagnostics.response.v1",
+      "tests": [
+        "internal/app/agent_outcome_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.agent.image",
+      "website": true,
+      "method": "GET",
+      "route": "/api/agent/image",
+      "cli": "agent image",
+      "cli_observed": true,
+      "boundary": "session",
+      "output_schema": "cortex.agent.image.response.v1",
+      "tests": [
+        "internal/app/app_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.agent.models",
+      "website": true,
+      "method": "GET",
+      "route": "/api/agent/models",
+      "cli": "agent models",
+      "cli_observed": true,
+      "boundary": "session",
+      "output_schema": "cortex.agent.models.response.v1",
+      "tests": [
+        "internal/app/app_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.agent.run",
+      "website": true,
+      "method": "POST",
+      "route": "/api/agent/run",
+      "cli": "agent run",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.agent.run.request.v1",
+      "output_schema": "cortex.agent.run.response.v1",
+      "tests": [
+        "internal/app/agent_outcome_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.agent.status",
+      "website": true,
+      "method": "GET",
+      "route": "/api/agent/status",
+      "cli": "agent status",
+      "cli_observed": true,
+      "boundary": "session",
+      "output_schema": "cortex.agent.status.response.v1",
+      "tests": [
+        "internal/app/agent_lifecycle_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.auth.google.update",
+      "website": true,
+      "method": "POST",
+      "route": "/api/auth/google",
+      "cli": "google-auth update",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.auth.google.update.request.v1",
+      "output_schema": "cortex.auth.google.update.response.v1",
+      "tests": [
+        "internal/app/auth_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.auth.login",
+      "website": true,
+      "method": "POST",
+      "route": "/api/auth/login",
+      "cli": "auth login",
+      "cli_observed": true,
+      "boundary": "public",
+      "input_schema": "cortex.auth.login.request.v1",
+      "output_schema": "cortex.auth.login.response.v1",
+      "tests": [
+        "internal/app/auth_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.auth.logout",
+      "website": true,
+      "method": "POST",
+      "route": "/api/auth/logout",
+      "cli": "auth logout",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.auth.logout.request.v1",
+      "output_schema": "cortex.auth.logout.response.v1",
+      "tests": [
+        "internal/app/auth_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.auth.password.update",
+      "website": true,
+      "method": "POST",
+      "route": "/api/auth/password",
+      "cli": "auth-password update",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.auth.password.update.request.v1",
+      "output_schema": "cortex.auth.password.update.response.v1",
+      "tests": [
+        "internal/app/auth_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.auth.setup",
+      "website": true,
+      "method": "POST",
+      "route": "/api/auth/setup",
+      "cli": "auth setup",
+      "cli_observed": true,
+      "boundary": "public",
+      "input_schema": "cortex.auth.setup.request.v1",
+      "output_schema": "cortex.auth.setup.response.v1",
+      "tests": [
+        "internal/app/auth_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.auth.state",
+      "website": true,
+      "method": "GET",
+      "route": "/api/auth/state",
+      "cli": "auth state",
+      "cli_observed": true,
+      "boundary": "public",
+      "output_schema": "cortex.auth.state.response.v1",
+      "tests": [
+        "internal/app/auth_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.auth.totp.begin",
+      "website": true,
+      "method": "POST",
+      "route": "/api/auth/totp/begin",
+      "cli": "totp begin",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.auth.totp.begin.request.v1",
+      "output_schema": "cortex.auth.totp.begin.response.v1",
+      "tests": [
+        "internal/app/auth_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.auth.totp.disable",
+      "website": true,
+      "method": "POST",
+      "route": "/api/auth/totp/disable",
+      "cli": "totp disable",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.auth.totp.disable.request.v1",
+      "output_schema": "cortex.auth.totp.disable.response.v1",
+      "tests": [
+        "internal/app/auth_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.auth.totp.enable",
+      "website": true,
+      "method": "POST",
+      "route": "/api/auth/totp/enable",
+      "cli": "totp enable",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.auth.totp.enable.request.v1",
+      "output_schema": "cortex.auth.totp.enable.response.v1",
+      "tests": [
+        "internal/app/auth_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.conversation.delete",
+      "website": true,
+      "method": "DELETE",
+      "route": "/api/conversation",
+      "cli": "conversation delete",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.conversation.delete.request.v1",
+      "output_schema": "cortex.conversation.delete.response.v1",
+      "tests": [
+        "internal/app/conversation_integrity_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.conversation.update",
+      "website": true,
+      "method": "PUT",
+      "route": "/api/conversation",
+      "cli": "conversation update",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.conversation.update.request.v1",
+      "output_schema": "cortex.conversation.update.response.v1",
+      "tests": [
+        "internal/app/conversation_integrity_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.conversations.list",
+      "website": true,
+      "method": "GET",
+      "route": "/api/conversations",
+      "cli": "conversations list",
+      "cli_observed": true,
+      "boundary": "session",
+      "output_schema": "cortex.conversations.list.response.v1",
+      "tests": [
+        "internal/app/conversations_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.file.read",
+      "website": true,
+      "method": "GET",
+      "route": "/api/file",
+      "cli": "file get",
+      "cli_observed": true,
+      "boundary": "session",
+      "output_schema": "cortex.file.read.response.v1",
+      "tests": [
+        "internal/app/workspace_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.files.list",
+      "website": true,
+      "method": "GET",
+      "route": "/api/files",
+      "cli": "files list",
+      "cli_observed": true,
+      "boundary": "session",
+      "output_schema": "cortex.files.list.response.v1",
+      "tests": [
+        "internal/app/workspace_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.health.read",
+      "website": false,
+      "method": "GET",
+      "route": "/api/health",
+      "cli": "health get",
+      "cli_observed": true,
+      "boundary": "public",
+      "output_schema": "cortex.health.read.response.v1",
+      "tests": [
+        "internal/app/routes_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.launcher.config.update",
+      "website": true,
+      "method": "PUT",
+      "route": "/api/launcher/config",
+      "cli": "launcher-config update",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.launcher.config.update.request.v1",
+      "output_schema": "cortex.launcher.config.update.response.v1",
+      "tests": [
+        "internal/app/launcher_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.launcher.instances.list",
+      "website": true,
+      "method": "GET",
+      "route": "/api/launcher/instances",
+      "cli": "launcher-instances list",
+      "cli_observed": true,
+      "boundary": "public",
+      "output_schema": "cortex.launcher.instances.list.response.v1",
+      "tests": [
+        "internal/app/launcher_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.oauth.google.callback",
+      "website": false,
+      "method": "GET",
+      "route": "/api/auth/google/callback",
+      "cli_observed": false,
+      "boundary": "public",
+      "output_schema": "cortex.oauth.google.callback.response.v1",
+      "tests": [
+        "internal/app/auth_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.oauth.google.start",
+      "website": true,
+      "method": "GET",
+      "route": "/api/auth/google/start",
+      "cli_observed": false,
+      "boundary": "public",
+      "output_schema": "cortex.oauth.google.start.response.v1",
+      "tests": [
+        "internal/app/auth_hardening_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.roles.list",
+      "website": true,
+      "method": "GET",
+      "route": "/api/manage/roles",
+      "cli": "roles list",
+      "cli_observed": true,
+      "boundary": "session",
+      "output_schema": "cortex.roles.list.response.v1",
+      "tests": [
+        "internal/app/accounts_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.settings.read",
+      "website": true,
+      "method": "GET",
+      "route": "/api/settings",
+      "cli": "settings get",
+      "cli_observed": true,
+      "boundary": "session",
+      "output_schema": "cortex.settings.read.response.v1",
+      "tests": [
+        "internal/app/app_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.settings.update",
+      "website": true,
+      "method": "POST",
+      "route": "/api/settings",
+      "cli": "settings update",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.settings.update.request.v1",
+      "output_schema": "cortex.settings.update.response.v1",
+      "tests": [
+        "internal/app/app_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.status.read",
+      "website": true,
+      "method": "GET",
+      "route": "/api/status",
+      "cli": "status get",
+      "cli_observed": true,
+      "boundary": "session",
+      "output_schema": "cortex.status.read.response.v1",
+      "tests": [
+        "internal/app/app_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.users.list",
+      "website": true,
+      "method": "GET",
+      "route": "/api/manage/users",
+      "cli": "users list",
+      "cli_observed": true,
+      "boundary": "session",
+      "output_schema": "cortex.users.list.response.v1",
+      "tests": [
+        "internal/app/accounts_test.go"
+      ]
+    },
+    {
+      "operation": "cortex.users.manage",
+      "website": true,
+      "method": "POST",
+      "route": "/api/manage/users",
+      "cli": "users manage",
+      "cli_observed": true,
+      "boundary": "session",
+      "input_schema": "cortex.users.manage.request.v1",
+      "output_schema": "cortex.users.manage.response.v1",
+      "tests": [
+        "internal/app/accounts_test.go"
+      ]
+    }
+  ]
+}

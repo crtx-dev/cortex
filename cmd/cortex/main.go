@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 
 	"github.com/crtx-dev/cortex/internal/app"
+	"github.com/crtx-dev/cortex/internal/operations"
+	"github.com/gantry-tools/gantry-core/automation"
 )
 
 var version = "0.1.2"
@@ -34,8 +36,11 @@ func main() {
 			os.Args = append(os.Args[:1], os.Args[2:]...)
 		default:
 			if os.Args[1][0] != '-' {
-				fmt.Fprintln(os.Stderr, "cortex: unknown command", os.Args[1])
-				os.Exit(2)
+				os.Exit(automation.Run(os.Args[1:], operations.Contracts, automation.Options{
+					Program: "cortex", DefaultURL: "http://127.0.0.1:7331",
+					CookieName: "cortex_session", CSRFHeader: "X-Cortex-CSRF",
+					CSRFFields: []string{"csrf"}, SessionInfoPath: "/api/auth/state",
+				}))
 			}
 		}
 	}
