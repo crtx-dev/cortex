@@ -151,3 +151,20 @@ func (store *cortexAccounts) resetPassword(id, password string) error {
 	}
 	return errors.New("password identity not found")
 }
+
+func (store *cortexAccounts) setIdentityTOTP(accountID, identityID string, enabled bool) error {
+	return store.model.SetIdentityTOTP(accountID, identityID, enabled, nil)
+}
+
+func (store *cortexAccounts) verifyIdentityPassword(accountID, identityID, password string) bool {
+	account, found := store.model.Account(accountID)
+	if !found || !account.Enabled {
+		return false
+	}
+	for _, identity := range account.Identities {
+		if identity.ID == identityID && identity.Enabled && identity.Type == "password" {
+			return coreauth.VerifyPassword(identity.PasswordHash, password)
+		}
+	}
+	return false
+}

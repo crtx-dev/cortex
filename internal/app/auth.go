@@ -87,13 +87,11 @@ func (a *App) sameOrigin(r *http.Request) bool {
 }
 
 type AuthSettings struct {
-	PasswordHash       string `json:"passwordHash,omitempty"`
-	TOTPSecret         string `json:"totpSecret,omitempty"`
-	TOTPEnabled        bool   `json:"totpEnabled,omitempty"`
-	GoogleEnabled      bool   `json:"googleEnabled,omitempty"`
-	GoogleClientID     string `json:"googleClientId,omitempty"`
-	GoogleClientSecret string `json:"googleClientSecret,omitempty"`
-	GoogleEmail        string `json:"googleEmail,omitempty"`
+	TOTPSecrets        map[string]string `json:"totpSecrets,omitempty"`
+	GoogleEnabled      bool              `json:"googleEnabled,omitempty"`
+	GoogleClientID     string            `json:"googleClientId,omitempty"`
+	GoogleClientSecret string            `json:"googleClientSecret,omitempty"`
+	GoogleEmail        string            `json:"googleEmail,omitempty"`
 }
 type sessionInfo struct {
 	Created    time.Time
@@ -370,16 +368,25 @@ func (a *App) authState(w http.ResponseWriter, r *http.Request) {
 	x := a.settings.Auth
 	a.mu.RUnlock()
 	authed := a.authenticated(r)
-	out := map[string]any{"configured": !a.accounts.empty(), "authenticated": authed, "totpEnabled": x.TOTPEnabled, "googleEnabled": x.GoogleEnabled, "googleConfigured": x.GoogleClientID != "" && x.GoogleClientSecret != ""}
+	out := map[string]any{"configured": !a.accounts.empty(), "authenticated": authed, "totpEnabled": false, "googleEnabled": x.GoogleEnabled, "googleConfigured": x.GoogleClientID != "" && x.GoogleClientSecret != ""}
 	if authed {
 		out["googleEmail"] = x.GoogleEmail
 		out["googleClientID"] = x.GoogleClientID
 		token := sessionToken(r)
 		a.authMu.Lock()
-		out["csrf"] = a.sessions[token].CSRF
-		out["accountId"] = a.sessions[token].AccountID
-		out["capabilities"] = a.accounts.capabilities(a.sessions[token].AccountID)
+		current := a.sessions[token]
+		out["csrf"] = current.CSRF
+		out["accountId"] = current.AccountID
+		out["capabilities"] = a.accounts.capabilities(current.AccountID)
 		a.authMu.Unlock()
+		if account, found := a.accounts.account(current.AccountID); found {
+			for _, identity := range account.Identities {
+				if identity.ID == current.IdentityID {
+					out["totpEnabled"] = identity.TOTPEnabled
+					break
+				}
+			}
+		}
 	}
 	jsonOut(w, out)
 }
@@ -422,12 +429,6 @@ func (a *App) authSetup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	a.mu.Lock()
-	a.settings.Auth.PasswordHash = ""
-	a.settings.Auth.TOTPSecret = ""
-	a.settings.Auth.TOTPEnabled = false
-	a.mu.Unlock()
-	_ = a.saveSettings()
 	a.newSessionCookie(w, r, account.ID, account.Identities[0].ID)
 	jsonOut(w, map[string]bool{"ok": true})
 }
@@ -449,6 +450,16 @@ func (a *App) authLogin(w http.ResponseWriter, r *http.Request) {
 		a.recordLoginFailure(r)
 		http.Error(w, "invalid credentials", 401)
 		return
+	}
+	if identity.TOTPEnabled {
+		a.mu.RLock()
+		secret := a.settings.Auth.TOTPSecrets[identity.ID]
+		a.mu.RUnlock()
+		if secret == "" || !a.consumeTOTP(secret, q.TOTP) {
+			a.recordLoginFailure(r)
+			http.Error(w, "invalid two-factor code", 401)
+			return
+		}
 	}
 	a.clearLoginFailures(r)
 	a.newSessionCookie(w, r, account.ID, identity.ID)
@@ -546,9 +557,18 @@ func (a *App) authTOTPEnable(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid two-factor code", 400)
 		return
 	}
+	a.authMu.Lock()
+	current := a.sessions[token]
+	a.authMu.Unlock()
+	if err := a.accounts.setIdentityTOTP(current.AccountID, current.IdentityID, true); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
 	a.mu.Lock()
-	a.settings.Auth.TOTPSecret = pending.Secret
-	a.settings.Auth.TOTPEnabled = true
+	if a.settings.Auth.TOTPSecrets == nil {
+		a.settings.Auth.TOTPSecrets = map[string]string{}
+	}
+	a.settings.Auth.TOTPSecrets[current.IdentityID] = pending.Secret
 	a.mu.Unlock()
 	a.authMu.Lock()
 	delete(a.pendingTOTP, token)
@@ -569,16 +589,20 @@ func (a *App) authTOTPDisable(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &q) {
 		return
 	}
-	a.mu.RLock()
-	hash := a.settings.Auth.PasswordHash
-	a.mu.RUnlock()
-	if !verifyPassword(hash, q.Password) {
+	token := sessionToken(r)
+	a.authMu.Lock()
+	current := a.sessions[token]
+	a.authMu.Unlock()
+	if !a.accounts.verifyIdentityPassword(current.AccountID, current.IdentityID, q.Password) {
 		http.Error(w, "password is incorrect", 401)
 		return
 	}
+	if err := a.accounts.setIdentityTOTP(current.AccountID, current.IdentityID, false); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
 	a.mu.Lock()
-	a.settings.Auth.TOTPEnabled = false
-	a.settings.Auth.TOTPSecret = ""
+	delete(a.settings.Auth.TOTPSecrets, current.IdentityID)
 	a.mu.Unlock()
 	if err := a.saveSettings(); err != nil {
 		http.Error(w, err.Error(), 500)
@@ -695,12 +719,6 @@ func (a *App) googleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	a.newSessionCookie(w, r)
 	http.Redirect(w, r, "/app/", 302)
-}
-func (a *App) authDebugHash() string {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	h := sha256.Sum256([]byte(a.settings.Auth.PasswordHash))
-	return hex.EncodeToString(h[:4])
 }
 
 var _ = os.ErrNotExist
