@@ -15,6 +15,9 @@ func TestOperationContracts(t *testing.T) {
 	if findings := contracttest.CertificationFindings(Manifest()); len(findings) != 0 {
 		t.Fatalf("certification findings: %+v", findings)
 	}
+	if findings := contracttest.SecurityFindings(Manifest()); len(findings) != 0 {
+		t.Fatalf("security findings: %+v", findings)
+	}
 }
 
 func TestGeneratedCoverageIsCurrent(t *testing.T) {
