@@ -1,5 +1,9 @@
 # Cortex handover
 
+## Shared operation campaign
+
+Cortex follows `gantry-core/docs/CLI_API_CLUSTER_ROADMAP.md`. Phase 1 CP8 adopts the v0.1.1 contract for status, settings update and TOTP disable. Its CLI names are reserved, not marked implemented; Phase 5 must wire and runtime-observe them before executable coverage is advertised.
+
 ## Current release state
 
 - Released stable: **v0.1.1** (stable public preview).
