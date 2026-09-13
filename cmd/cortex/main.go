@@ -24,6 +24,12 @@ func main() {
 			return
 		case "service":
 			os.Exit(runService(os.Args[2:], version))
+		case "reset":
+			os.Exit(runReset(os.Args[2:]))
+		case "config":
+			os.Exit(runConfig(os.Args[2:]))
+		case "setup":
+			os.Exit(runSetup(os.Args[2:]))
 		case "serve":
 			os.Args = append(os.Args[:1], os.Args[2:]...)
 		default:

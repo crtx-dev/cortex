@@ -53,6 +53,17 @@ func loadCortexAccounts(dir string) (*cortexAccounts, error) {
 	return &cortexAccounts{model: model}, nil
 }
 
+// SetupAdministrator performs first-run setup without starting the HTTP
+// server. It is intended for local provisioning tools and automation.
+func SetupAdministrator(dir, display, username, password string) error {
+	accounts, err := loadCortexAccounts(dir)
+	if err != nil {
+		return err
+	}
+	_, err = accounts.initial(display, username, password)
+	return err
+}
+
 func (p cortexAccountPersistence) LoadAccounts() (coreauth.AccountsFile, error) {
 	value := coreauth.AccountsFile{Version: accountSchemaVersion, Accounts: []coreauth.Account{}}
 	err := readAccountFile(filepath.Join(p.dir, "users.json"), &value)

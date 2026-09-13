@@ -149,3 +149,7 @@ Cortex keeps the transcript and metadata of every conversation even when its his
 The browser marks such conversations visibly as unavailable and disables **Run** for them; the transcript stays intact. To keep working with an old conversation, open the workspace picker and select a valid replacement — Run re-enables only after the new workspace passes the same strict root and symlink checks. No filesystem details beyond the path you already chose are shown. The execution boundary itself is unchanged: a missing, renamed, inaccessible, out-of-root or symlink-escaping workspace is never used for browsing or agent execution.
 
 A session with no explicit workspace is a "Default workspace" session: Run is enabled and executes in the configured Cortex root (the `--root` value), and the conversation keeps the explicit empty default-root state rather than rewriting its stored workspace. Selecting a specific directory later still clears an incompatible OpenCode/provider session identifier as before.
+
+## Headless administration
+
+Use `cortex setup --password-file FILE`, `cortex config show --json`, and the `service` commands from provisioning agents. With the service stopped, `cortex reset --auth` or `cortex reset --all` requires the typed phrase `CORTEX AUTH` or `CORTEX ALL`; `--confirm` supplies the same phrase non-interactively. Resets retain timestamped backups, and full reset never removes workspace repositories.
