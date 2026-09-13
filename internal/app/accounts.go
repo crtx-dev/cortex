@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
-	"time"
 
 	coreauth "github.com/gantry-tools/gantry-core/auth"
 )
@@ -26,12 +24,8 @@ var cortexCapabilities = []coreauth.CapabilityInfo{
 	{Key: "launcher.configure.all", Group: "Launcher", Label: "Manage launcher instances"},
 }
 
-type cortexAccounts struct {
-	mu    sync.RWMutex
-	dir   string
-	users coreauth.AccountsFile
-	roles coreauth.RolesFile
-}
+type cortexAccounts struct{ model *coreauth.Model }
+type cortexAccountPersistence struct{ dir string }
 
 func defaultCortexRoles() coreauth.RolesFile {
 	return coreauth.RolesFile{Version: accountSchemaVersion, Roles: []coreauth.Role{
@@ -40,22 +34,56 @@ func defaultCortexRoles() coreauth.RolesFile {
 	}}
 }
 
+func cortexAccountPolicy() coreauth.AccountPolicy {
+	return coreauth.AccountPolicy{SchemaVersion: accountSchemaVersion, ProductName: "Cortex", KnownCapability: func(key string) bool {
+		for _, item := range cortexCapabilities {
+			if item.Key == key {
+				return true
+			}
+		}
+		return false
+	}}
+}
+
 func loadCortexAccounts(dir string) (*cortexAccounts, error) {
-	store := &cortexAccounts{
-		dir:   dir,
-		users: coreauth.AccountsFile{Version: accountSchemaVersion, Accounts: []coreauth.Account{}},
-		roles: defaultCortexRoles(),
-	}
-	if err := readAccountFile(filepath.Join(dir, "users.json"), &store.users); err != nil && !errors.Is(err, os.ErrNotExist) {
+	model, err := coreauth.NewModel(cortexAccountPersistence{dir: dir}, cortexAccountPolicy())
+	if err != nil {
 		return nil, err
 	}
-	if err := readAccountFile(filepath.Join(dir, "roles.json"), &store.roles); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
+	return &cortexAccounts{model: model}, nil
+}
+
+func (p cortexAccountPersistence) LoadAccounts() (coreauth.AccountsFile, error) {
+	value := coreauth.AccountsFile{Version: accountSchemaVersion, Accounts: []coreauth.Account{}}
+	err := readAccountFile(filepath.Join(p.dir, "users.json"), &value)
+	if errors.Is(err, os.ErrNotExist) {
+		return value, nil
 	}
-	if err := coreauth.ValidateAccounts(store.users, store.roles, store.policy()); err != nil {
-		return nil, err
+	return value, err
+}
+
+func (p cortexAccountPersistence) LoadRoles() (coreauth.RolesFile, error) {
+	value := defaultCortexRoles()
+	err := readAccountFile(filepath.Join(p.dir, "roles.json"), &value)
+	if errors.Is(err, os.ErrNotExist) {
+		return value, nil
 	}
-	return store, nil
+	return value, err
+}
+
+func (p cortexAccountPersistence) SaveAccounts(value coreauth.AccountsFile) error {
+	if err := writeAccountFile(filepath.Join(p.dir, "users.json"), value); err != nil {
+		return err
+	}
+	rolesPath := filepath.Join(p.dir, "roles.json")
+	if _, err := os.Stat(rolesPath); errors.Is(err, os.ErrNotExist) {
+		return writeAccountFile(rolesPath, defaultCortexRoles())
+	}
+	return nil
+}
+
+func (p cortexAccountPersistence) SaveRoles(value coreauth.RolesFile) error {
+	return writeAccountFile(filepath.Join(p.dir, "roles.json"), value)
 }
 
 func readAccountFile(path string, target any) error {
@@ -79,165 +107,47 @@ func writeAccountFile(path string, value any) error {
 	return os.Rename(temporary, path)
 }
 
-func (store *cortexAccounts) policy() coreauth.AccountPolicy {
-	return coreauth.AccountPolicy{SchemaVersion: accountSchemaVersion, ProductName: "Cortex", KnownCapability: func(key string) bool {
-		for _, item := range cortexCapabilities {
-			if item.Key == key {
-				return true
-			}
-		}
-		return false
-	}}
-}
-
-func (store *cortexAccounts) empty() bool {
-	store.mu.RLock()
-	defer store.mu.RUnlock()
-	return len(store.users.Accounts) == 0
-}
+func (store *cortexAccounts) empty() bool { return store.model.Empty() }
 
 func (store *cortexAccounts) list() []coreauth.Account {
-	store.mu.RLock()
-	defer store.mu.RUnlock()
-	out := append([]coreauth.Account(nil), store.users.Accounts...)
+	out := store.model.Accounts()
 	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].DisplayName) < strings.ToLower(out[j].DisplayName) })
 	return out
 }
 
-func (store *cortexAccounts) roleList() []coreauth.Role {
-	store.mu.RLock()
-	defer store.mu.RUnlock()
-	return append([]coreauth.Role(nil), store.roles.Roles...)
-}
-
+func (store *cortexAccounts) roleList() []coreauth.Role { return store.model.Roles() }
 func (store *cortexAccounts) account(id string) (coreauth.Account, bool) {
-	for _, item := range store.list() {
-		if item.ID == id {
-			return item, true
-		}
-	}
-	return coreauth.Account{}, false
+	return store.model.Account(id)
 }
-
 func (store *cortexAccounts) authenticate(username, password string) (coreauth.Account, coreauth.Identity, bool) {
-	for _, account := range store.list() {
-		if !account.Enabled {
-			continue
-		}
-		for _, identity := range account.Identities {
-			if identity.Enabled && identity.Type == "password" && strings.EqualFold(identity.Username, strings.TrimSpace(username)) && coreauth.VerifyPassword(identity.PasswordHash, password) {
-				return account, identity, true
-			}
-		}
-	}
-	return coreauth.Account{}, coreauth.Identity{}, false
+	return store.model.AuthenticatePassword(username, password)
 }
-
-func (store *cortexAccounts) capabilities(id string) []string {
-	account, ok := store.account(id)
-	if !ok {
-		return nil
-	}
-	return coreauth.EffectiveCapabilities(account, store.roleList())
-}
+func (store *cortexAccounts) capabilities(id string) []string { return store.model.Capabilities(id) }
 
 func (store *cortexAccounts) create(display, username, password string, roleIDs []string) (coreauth.Account, error) {
-	display, username = strings.TrimSpace(display), strings.TrimSpace(username)
-	if display == "" || username == "" || len(password) < 7 {
-		return coreauth.Account{}, errors.New("display name, username and a password of at least 7 characters are required")
-	}
-	hash, err := coreauth.HashPassword(password)
-	if err != nil {
-		return coreauth.Account{}, err
-	}
 	if len(roleIDs) == 0 {
 		roleIDs = []string{"user"}
 	}
-	account := coreauth.Account{ID: coreauth.NewID("acct"), DisplayName: display, Enabled: true, Roles: coreauth.DedupeStrings(roleIDs), CreatedAt: time.Now().UTC(), Identities: []coreauth.Identity{{ID: coreauth.NewID("id"), Type: "password", Username: username, PasswordHash: hash, Enabled: true}}}
-	store.mu.Lock()
-	defer store.mu.Unlock()
-	next := store.users
-	next.Accounts = append(append([]coreauth.Account(nil), store.users.Accounts...), account)
-	if err = coreauth.ValidateAccounts(next, store.roles, store.policy()); err != nil {
-		return coreauth.Account{}, err
-	}
-	if err = writeAccountFile(filepath.Join(store.dir, "users.json"), next); err != nil {
-		return coreauth.Account{}, err
-	}
-	if _, statErr := os.Stat(filepath.Join(store.dir, "roles.json")); errors.Is(statErr, os.ErrNotExist) {
-		if err = writeAccountFile(filepath.Join(store.dir, "roles.json"), store.roles); err != nil {
-			return coreauth.Account{}, err
-		}
-	}
-	store.users = next
-	return account, nil
+	return store.model.CreateAccount(display, username, password, roleIDs)
 }
 
 func (store *cortexAccounts) initial(display, username, password string) (coreauth.Account, error) {
-	if !store.empty() {
-		return coreauth.Account{}, errors.New("setup is already complete")
-	}
-	return store.create(display, username, password, []string{"administrator"})
+	return store.model.CreateInitialAdministrator(display, username, password)
 }
 
 func (store *cortexAccounts) update(id, display string, enabled bool, roleIDs []string) error {
-	store.mu.Lock()
-	defer store.mu.Unlock()
-	next := store.users
-	next.Accounts = append([]coreauth.Account(nil), store.users.Accounts...)
-	found := false
-	for index := range next.Accounts {
-		if next.Accounts[index].ID == id {
-			found = true
-			next.Accounts[index].DisplayName = strings.TrimSpace(display)
-			next.Accounts[index].Enabled = enabled
-			next.Accounts[index].Roles = coreauth.DedupeStrings(roleIDs)
-		}
-	}
-	if !found {
-		return errors.New("account not found")
-	}
-	if err := coreauth.ValidateAccounts(next, store.roles, store.policy()); err != nil {
-		return err
-	}
-	if err := writeAccountFile(filepath.Join(store.dir, "users.json"), next); err != nil {
-		return err
-	}
-	store.users = next
-	return nil
+	return store.model.UpdateAccount(id, display, enabled, roleIDs)
 }
 
 func (store *cortexAccounts) resetPassword(id, password string) error {
-	if len(password) < 7 {
-		return errors.New("password must be at least 7 characters")
+	account, found := store.model.Account(id)
+	if !found {
+		return errors.New("account not found")
 	}
-	hash, err := coreauth.HashPassword(password)
-	if err != nil {
-		return err
-	}
-	store.mu.Lock()
-	defer store.mu.Unlock()
-	next := store.users
-	next.Accounts = append([]coreauth.Account(nil), store.users.Accounts...)
-	found := false
-	for accountIndex := range next.Accounts {
-		if next.Accounts[accountIndex].ID == id {
-			next.Accounts[accountIndex].Identities = append([]coreauth.Identity(nil), next.Accounts[accountIndex].Identities...)
-			for identityIndex := range next.Accounts[accountIndex].Identities {
-				identity := &next.Accounts[accountIndex].Identities[identityIndex]
-				if identity.Type == "password" {
-					identity.PasswordHash = hash
-					found = true
-					break
-				}
-			}
+	for _, identity := range account.Identities {
+		if identity.Type == "password" {
+			return store.model.SetPassword(id, identity.ID, password)
 		}
 	}
-	if !found {
-		return errors.New("password identity not found")
-	}
-	if err = writeAccountFile(filepath.Join(store.dir, "users.json"), next); err == nil {
-		store.users = next
-	}
-	return err
+	return errors.New("password identity not found")
 }
