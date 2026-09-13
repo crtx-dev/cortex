@@ -22,7 +22,7 @@ func (a *App) launcherRoot(static http.Handler) http.HandlerFunc {
 			return
 		}
 		if r.URL.Query().Has("config") {
-			if !a.authenticated(r) {
+			if !a.managementAllowed(r, "launcher.configure.all") {
 				corelauncher.WriteAccessError(w, http.StatusUnauthorized, "Cortex", "C", "#7fc89b")
 				return
 			}
@@ -73,6 +73,10 @@ func (a *App) launcherInstances(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) launcherConfig(w http.ResponseWriter, r *http.Request) {
+	if !a.managementAllowed(r, "launcher.configure.all") {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	var document corelauncher.Document
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()

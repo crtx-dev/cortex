@@ -68,10 +68,13 @@ func TestHostAndOriginValidation(t *testing.T) {
 
 func TestCSRFProtectsSessionMutations(t *testing.T) {
 	a := hardeningTestApp(t)
-	a.settings.Auth.PasswordHash = passwordHash("password")
+	acct, err := a.accounts.initial("Administrator", "admin", "password")
+	if err != nil {
+		t.Fatal(err)
+	}
 	seed := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/auth/login", nil)
 	created := httptest.NewRecorder()
-	a.newSessionCookie(created, seed)
+	a.newSessionCookie(created, seed, acct.ID, acct.Identities[0].ID)
 	cookie := created.Result().Cookies()[0]
 	csrf := a.sessions[cookie.Value].CSRF
 

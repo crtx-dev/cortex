@@ -45,6 +45,7 @@ type App struct {
 	runSlots              chan struct{}
 	requestSlots          chan struct{}
 	settings              Settings
+	accounts              *cortexAccounts
 	// test hooks (nil in production) inject persistence failures deterministically.
 	failAgentRunEvent  func(runID, kind string) error
 	failFinishAgentRun func(runID string) error
@@ -125,7 +126,12 @@ func New(o Options) (*App, error) {
 			return nil, errors.New("public origin must be an http(s) origin without a path")
 		}
 	}
-	a := &App{listen: o.Listen, root: root, workspaceResolver: resolver, dataDir: o.DataDir, trustProxy: o.TrustProxy, publicOrigin: publicOrigin, db: db, mux: http.NewServeMux(), settings: Settings{ActiveProvider: "opencode", Keys: map[string]string{}, Models: map[string]string{}}, sessions: map[string]sessionInfo{}, loginFailures: map[string][]time.Time{}, oauthStates: map[string]oauthState{}, pendingTOTP: map[string]pendingTOTP{}, usedTOTP: map[string]time.Time{}, activeRuns: map[string]*activeRun{}, runSlots: make(chan struct{}, 4), requestSlots: make(chan struct{}, 128)}
+	accounts, err := loadCortexAccounts(o.DataDir)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("load accounts: %w", err)
+	}
+	a := &App{listen: o.Listen, root: root, workspaceResolver: resolver, dataDir: o.DataDir, trustProxy: o.TrustProxy, publicOrigin: publicOrigin, db: db, mux: http.NewServeMux(), accounts: accounts, settings: Settings{ActiveProvider: "opencode", Keys: map[string]string{}, Models: map[string]string{}}, sessions: map[string]sessionInfo{}, loginFailures: map[string][]time.Time{}, oauthStates: map[string]oauthState{}, pendingTOTP: map[string]pendingTOTP{}, usedTOTP: map[string]time.Time{}, activeRuns: map[string]*activeRun{}, runSlots: make(chan struct{}, 4), requestSlots: make(chan struct{}, 128)}
 	if err := a.loadSettings(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("load settings: %w", err)
@@ -259,6 +265,10 @@ func (a *App) routes() {
 		http.Redirect(w, r, "/app/", http.StatusPermanentRedirect)
 	})
 	a.mux.Handle("/app/", http.StripPrefix("/app", static))
+	a.mux.HandleFunc("/manage", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/manage/", http.StatusPermanentRedirect)
+	})
+	a.mux.HandleFunc("/manage/", a.manageRoot(static))
 	a.mux.Handle("/", a.launcherRoot(static))
 }
 func jsonOut(w http.ResponseWriter, v any) {
@@ -353,6 +363,10 @@ func (a *App) settingsAPI(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		jsonOut(w, a.publicSettings())
 	case "POST":
+		if !a.managementAllowed(r, "providers.manage") {
+			http.Error(w, "managed provider settings require an administrator", http.StatusForbidden)
+			return
+		}
 		var q struct {
 			Provider  string `json:"provider"`
 			Key       string `json:"key"`

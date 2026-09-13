@@ -42,6 +42,8 @@ func (a *App) apiRoutes() []registeredRoute {
 		session("/api/auth/totp/enable", post, a.authTOTPEnable),
 		session("/api/auth/totp/disable", post, a.authTOTPDisable),
 		session("/api/auth/google", post, a.authGoogleConfig),
+		session("/api/manage/users", []string{http.MethodGet, http.MethodPost}, a.manageUsers),
+		session("/api/manage/roles", get, a.manageRoles),
 		public("/api/auth/google/start", get, a.googleStart),
 		public("/api/auth/google/callback", get, a.googleCallback),
 		session("/api/status", get, a.status),

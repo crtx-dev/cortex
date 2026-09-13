@@ -61,12 +61,15 @@ func TestSessionsAreBoundedAndOldestIsEvicted(t *testing.T) {
 
 func TestPasswordChangeRevokesOtherSessionsAndRotatesCurrent(t *testing.T) {
 	a := hardeningTestApp(t)
-	a.settings.Auth.PasswordHash = passwordHash("old-password")
+	acct, err := a.accounts.initial("Administrator", "admin", "old-password")
+	if err != nil {
+		t.Fatal(err)
+	}
 	request := httptest.NewRequest(http.MethodPost, "http://cortex/api/auth/password", nil)
 	first := httptest.NewRecorder()
-	a.newSessionCookie(first, request)
+	a.newSessionCookie(first, request, acct.ID, acct.Identities[0].ID)
 	oldCookie := first.Result().Cookies()[0]
-	a.newSessionCookie(httptest.NewRecorder(), request)
+	a.newSessionCookie(httptest.NewRecorder(), request, acct.ID, acct.Identities[0].ID)
 
 	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/auth/password", strings.NewReader(`{"Current":"old-password","Password":"new-password","Confirm":"new-password"}`))
 	req.Header.Set("Content-Type", "application/json")

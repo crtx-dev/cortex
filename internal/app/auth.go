@@ -17,9 +17,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
+
+	coreauth "github.com/gantry-tools/gantry-core/auth"
 )
 
 func (a *App) trustedProxy(r *http.Request) bool {
@@ -95,9 +96,11 @@ type AuthSettings struct {
 	GoogleEmail        string `json:"googleEmail,omitempty"`
 }
 type sessionInfo struct {
-	Created time.Time
-	Expires time.Time
-	CSRF    string
+	Created    time.Time
+	Expires    time.Time
+	CSRF       string
+	AccountID  string
+	IdentityID string
 }
 type pendingTOTP struct {
 	Secret  string
@@ -127,31 +130,11 @@ func randomToken(n int) string {
 
 // PBKDF2-HMAC-SHA256 avoids storing a plaintext password and uses only the Go standard library.
 func passwordHash(password string) string {
-	salt := make([]byte, 16)
-	_, _ = rand.Read(salt)
-	iter := 310000
-	dk := pbkdf2SHA256([]byte(password), salt, iter, 32)
-	return fmt.Sprintf("pbkdf2-sha256$%d$%s$%s", iter, base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(dk))
+	hash, _ := coreauth.HashPassword(password)
+	return hash
 }
 func verifyPassword(stored, password string) bool {
-	p := strings.Split(stored, "$")
-	if len(p) != 4 || p[0] != "pbkdf2-sha256" {
-		return false
-	}
-	iter, err := strconv.Atoi(p[1])
-	if err != nil || iter < 100000 {
-		return false
-	}
-	salt, err := base64.RawStdEncoding.DecodeString(p[2])
-	if err != nil {
-		return false
-	}
-	want, err := base64.RawStdEncoding.DecodeString(p[3])
-	if err != nil {
-		return false
-	}
-	got := pbkdf2SHA256([]byte(password), salt, iter, len(want))
-	return subtle.ConstantTimeCompare(got, want) == 1
+	return coreauth.VerifyPassword(stored, password)
 }
 func pbkdf2SHA256(password, salt []byte, iter, n int) []byte {
 	out := make([]byte, 0, n)
@@ -222,9 +205,7 @@ func (a *App) consumeTOTP(secret, code string) bool {
 }
 
 func (a *App) authConfigured() bool {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.settings.Auth.PasswordHash != ""
+	return !a.accounts.empty()
 }
 func (a *App) authenticated(r *http.Request) bool {
 	c, err := r.Cookie("cortex_session")
@@ -240,6 +221,12 @@ func (a *App) authenticated(r *http.Request) bool {
 		}
 		return false
 	}
+	if s.AccountID != "" {
+		if account, exists := a.accounts.account(s.AccountID); !exists || !account.Enabled {
+			delete(a.sessions, c.Value)
+			return false
+		}
+	}
 	return true
 }
 func sessionToken(r *http.Request) string {
@@ -249,7 +236,7 @@ func sessionToken(r *http.Request) string {
 	}
 	return c.Value
 }
-func (a *App) newSessionCookie(w http.ResponseWriter, r *http.Request) {
+func (a *App) newSessionCookie(w http.ResponseWriter, r *http.Request, principal ...string) {
 	token := randomToken(32)
 	now := time.Now()
 	a.authMu.Lock()
@@ -268,7 +255,14 @@ func (a *App) newSessionCookie(w http.ResponseWriter, r *http.Request) {
 		}
 		delete(a.sessions, oldestID)
 	}
-	a.sessions[token] = sessionInfo{Created: now, Expires: now.Add(7 * 24 * time.Hour), CSRF: randomToken(24)}
+	session := sessionInfo{Created: now, Expires: now.Add(7 * 24 * time.Hour), CSRF: randomToken(24)}
+	if len(principal) > 0 {
+		session.AccountID = principal[0]
+	}
+	if len(principal) > 1 {
+		session.IdentityID = principal[1]
+	}
+	a.sessions[token] = session
 	a.authMu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: "cortex_session", Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: a.requestScheme(r) == "https", MaxAge: 7 * 24 * 3600})
 }
@@ -376,13 +370,15 @@ func (a *App) authState(w http.ResponseWriter, r *http.Request) {
 	x := a.settings.Auth
 	a.mu.RUnlock()
 	authed := a.authenticated(r)
-	out := map[string]any{"configured": x.PasswordHash != "", "authenticated": authed, "totpEnabled": x.TOTPEnabled, "googleEnabled": x.GoogleEnabled, "googleConfigured": x.GoogleClientID != "" && x.GoogleClientSecret != ""}
+	out := map[string]any{"configured": !a.accounts.empty(), "authenticated": authed, "totpEnabled": x.TOTPEnabled, "googleEnabled": x.GoogleEnabled, "googleConfigured": x.GoogleClientID != "" && x.GoogleClientSecret != ""}
 	if authed {
 		out["googleEmail"] = x.GoogleEmail
 		out["googleClientID"] = x.GoogleClientID
 		token := sessionToken(r)
 		a.authMu.Lock()
 		out["csrf"] = a.sessions[token].CSRF
+		out["accountId"] = a.sessions[token].AccountID
+		out["capabilities"] = a.accounts.capabilities(a.sessions[token].AccountID)
 		a.authMu.Unlock()
 	}
 	jsonOut(w, out)
@@ -399,6 +395,8 @@ func (a *App) authSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var q struct {
+		Display  string `json:"display"`
+		Username string `json:"username"`
 		Password string `json:"password"`
 		Confirm  string `json:"confirm"`
 	}
@@ -413,14 +411,24 @@ func (a *App) authSetup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "passwords do not match", 400)
 		return
 	}
-	a.mu.Lock()
-	a.settings.Auth.PasswordHash = passwordHash(q.Password)
-	a.mu.Unlock()
-	if err := a.saveSettings(); err != nil {
+	if q.Username == "" {
+		q.Username = "admin"
+	}
+	if q.Display == "" {
+		q.Display = q.Username
+	}
+	account, err := a.accounts.initial(q.Display, q.Username, q.Password)
+	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	a.newSessionCookie(w, r)
+	a.mu.Lock()
+	a.settings.Auth.PasswordHash = ""
+	a.settings.Auth.TOTPSecret = ""
+	a.settings.Auth.TOTPEnabled = false
+	a.mu.Unlock()
+	_ = a.saveSettings()
+	a.newSessionCookie(w, r, account.ID, account.Identities[0].ID)
 	jsonOut(w, map[string]bool{"ok": true})
 }
 func (a *App) authLogin(w http.ResponseWriter, r *http.Request) {
@@ -428,7 +436,7 @@ func (a *App) authLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method", 405)
 		return
 	}
-	var q struct{ Password, TOTP string }
+	var q struct{ Username, Password, TOTP string }
 	if !decode(w, r, &q) {
 		return
 	}
@@ -436,21 +444,14 @@ func (a *App) authLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many login attempts", http.StatusTooManyRequests)
 		return
 	}
-	a.mu.RLock()
-	x := a.settings.Auth
-	a.mu.RUnlock()
-	if !verifyPassword(x.PasswordHash, q.Password) {
+	account, identity, ok := a.accounts.authenticate(q.Username, q.Password)
+	if !ok {
 		a.recordLoginFailure(r)
 		http.Error(w, "invalid credentials", 401)
 		return
 	}
-	if x.TOTPEnabled && !a.consumeTOTP(x.TOTPSecret, q.TOTP) {
-		a.recordLoginFailure(r)
-		http.Error(w, "invalid two-factor code", 401)
-		return
-	}
 	a.clearLoginFailures(r)
-	a.newSessionCookie(w, r)
+	a.newSessionCookie(w, r, account.ID, identity.ID)
 	jsonOut(w, map[string]bool{"ok": true})
 }
 func (a *App) authLogout(w http.ResponseWriter, r *http.Request) {
@@ -480,10 +481,19 @@ func (a *App) authPassword(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &q) {
 		return
 	}
-	a.mu.RLock()
-	old := a.settings.Auth.PasswordHash
-	a.mu.RUnlock()
-	if !verifyPassword(old, q.Current) {
+	token := sessionToken(r)
+	a.authMu.Lock()
+	current := a.sessions[token]
+	a.authMu.Unlock()
+	account, found := a.accounts.account(current.AccountID)
+	username := ""
+	for _, identity := range account.Identities {
+		if identity.ID == current.IdentityID {
+			username = identity.Username
+		}
+	}
+	verifiedAccount, verifiedIdentity, verified := a.accounts.authenticate(username, q.Current)
+	if !found || !verified || verifiedAccount.ID != current.AccountID || verifiedIdentity.ID != current.IdentityID {
 		http.Error(w, "current password is incorrect", 401)
 		return
 	}
@@ -491,17 +501,14 @@ func (a *App) authPassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "new password must match and be at least 7 characters", 400)
 		return
 	}
-	a.mu.Lock()
-	a.settings.Auth.PasswordHash = passwordHash(q.Password)
-	a.mu.Unlock()
-	if err := a.saveSettings(); err != nil {
+	if err := a.accounts.resetPassword(current.AccountID, q.Password); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 	a.authMu.Lock()
 	a.sessions = map[string]sessionInfo{}
 	a.authMu.Unlock()
-	a.newSessionCookie(w, r)
+	a.newSessionCookie(w, r, current.AccountID, current.IdentityID)
 	jsonOut(w, map[string]bool{"ok": true})
 }
 func (a *App) authTOTPBegin(w http.ResponseWriter, r *http.Request) {
