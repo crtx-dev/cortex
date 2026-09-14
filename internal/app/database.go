@@ -105,6 +105,11 @@ var databaseMigrations = []migration{
 			port INTEGER CHECK(port BETWEEN 1 AND 65535)
 		);`,
 	},
+	{
+		version: 7,
+		name:    "at most one running agent run per conversation",
+		sql:     `CREATE UNIQUE INDEX agent_runs_one_running ON agent_runs(conversation_id) WHERE state='running';`,
+	},
 }
 
 func openDatabase(dataDir string) (*sql.DB, error) {

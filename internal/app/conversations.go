@@ -401,6 +401,9 @@ func (a *App) startAgentRun(id, conversationID, prompt, workspace, provider, mod
 		return err
 	}
 	if _, err = tx.Exec("INSERT INTO agent_runs(id,conversation_id,state,prompt,started_at) VALUES(?,?,'running',?,?)", id, conversationID, prompt, now); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "constraint") || strings.Contains(strings.ToLower(err.Error()), "unique") {
+			return errors.New("agent is already running for this conversation")
+		}
 		return err
 	}
 	return tx.Commit()
