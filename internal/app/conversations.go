@@ -379,6 +379,12 @@ func supersedeTerminalMarkers(events []conversationEvent) []conversationEvent {
 // as running under this run's identity. Only the runner may write the running
 // and terminal states; client PUTs never transition conversation state.
 func (a *App) startAgentRun(id, conversationID, prompt, workspace, provider, model string) error {
+	// The one-running-run guard is a read-then-write across a SQLite
+	// transaction; concurrent starts must serialize so the loser deterministically
+	// observes the winner's committed row (and returns the clean conflict)
+	// instead of a SQLITE_BUSY failure from a stale read snapshot.
+	a.startMu.Lock()
+	defer a.startMu.Unlock()
 	now := time.Now().UnixMilli()
 	tx, err := a.db.Begin()
 	if err != nil {

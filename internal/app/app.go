@@ -32,6 +32,7 @@ type App struct {
 	publicOrigin          *url.URL
 	db                    *sql.DB
 	mux                   *http.ServeMux
+	server                *http.Server
 	mu                    sync.RWMutex
 	authMu                sync.Mutex
 	setupMu               sync.Mutex
@@ -42,6 +43,7 @@ type App struct {
 	usedTOTP              map[string]time.Time
 	runMu                 sync.Mutex
 	activeRuns            map[string]*activeRun
+	startMu               sync.Mutex
 	runSlots              chan struct{}
 	requestSlots          chan struct{}
 	settings              Settings
@@ -132,6 +134,15 @@ func New(o Options) (*App, error) {
 		return nil, fmt.Errorf("load accounts: %w", err)
 	}
 	a := &App{listen: o.Listen, root: root, workspaceResolver: resolver, dataDir: o.DataDir, trustProxy: o.TrustProxy, publicOrigin: publicOrigin, db: db, mux: http.NewServeMux(), accounts: accounts, settings: Settings{ActiveProvider: "opencode", Keys: map[string]string{}, Models: map[string]string{}}, sessions: map[string]sessionInfo{}, loginFailures: map[string][]time.Time{}, oauthStates: map[string]oauthState{}, pendingTOTP: map[string]pendingTOTP{}, usedTOTP: map[string]time.Time{}, activeRuns: map[string]*activeRun{}, runSlots: make(chan struct{}, 4), requestSlots: make(chan struct{}, 128)}
+	a.server = &http.Server{
+		Addr:              a.listen,
+		Handler:           a.overload(a.security(a.recoverPanics(a.httpBoundary(a.hostBoundary(a.authMiddleware(a.mux)))))),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      0,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 	if err := a.loadSettings(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("load settings: %w", err)
@@ -196,15 +207,18 @@ func (a *App) ListenAndServe() error {
 	return a.httpServer().ListenAndServe()
 }
 func (a *App) httpServer() *http.Server {
-	return &http.Server{
-		Addr:              a.listen,
-		Handler:           a.overload(a.security(a.recoverPanics(a.httpBoundary(a.hostBoundary(a.authMiddleware(a.mux)))))),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      0,
-		IdleTimeout:       60 * time.Second,
-		MaxHeaderBytes:    1 << 20,
+	if a.server == nil {
+		a.server = &http.Server{
+			Addr:              a.listen,
+			Handler:           a.overload(a.security(a.recoverPanics(a.httpBoundary(a.hostBoundary(a.authMiddleware(a.mux)))))),
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      0,
+			IdleTimeout:       60 * time.Second,
+			MaxHeaderBytes:    1 << 20,
+		}
 	}
+	return a.server
 }
 
 // Handler returns the full HTTP handler chain (overload, security, recovery,
