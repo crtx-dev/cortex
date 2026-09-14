@@ -59,19 +59,36 @@ func (a *App) clientIP(r *http.Request) string {
 }
 
 func (a *App) validHost(hostport string) bool {
-	if a.publicOrigin != nil {
-		return strings.EqualFold(hostport, a.publicOrigin.Host)
-	}
 	host := hostport
 	if parsed, _, err := net.SplitHostPort(hostport); err == nil {
 		host = parsed
 	}
 	host = strings.Trim(host, "[]")
-	return strings.EqualFold(host, "localhost") || func() bool { ip := net.ParseIP(host); return ip != nil && ip.IsLoopback() }()
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	if a.publicOrigin != nil {
+		return strings.EqualFold(hostport, a.publicOrigin.Host)
+	}
+	return false
 }
 
 func (a *App) sameOrigin(r *http.Request) bool {
 	values := r.Header.Values("Origin")
+	if len(values) == 0 {
+		// Local automation clients (the shared CLI, curl, scripts) never send an
+		// Origin header. Browsers always send Origin on writes, so this
+		// exemption is only reachable by a loopback client, preserving CSRF
+		// protection for every remote browser.
+		if !a.validHost(r.Host) {
+			return false
+		}
+		ip := net.ParseIP(a.clientIP(r))
+		return ip != nil && ip.IsLoopback()
+	}
 	if len(values) != 1 {
 		return false
 	}
