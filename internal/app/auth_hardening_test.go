@@ -61,7 +61,7 @@ func TestSessionsAreBoundedAndOldestIsEvicted(t *testing.T) {
 
 func TestPasswordChangeRevokesOtherSessionsAndRotatesCurrent(t *testing.T) {
 	a := hardeningTestApp(t)
-	acct, err := a.accounts.initial("Administrator", "admin", "old-password")
+	acct, err := a.accounts.initial("Administrator", "admin", "admin@example.com", "old-password")
 	if err != nil {
 		t.Fatal(err)
 	}

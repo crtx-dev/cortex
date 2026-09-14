@@ -4,7 +4,7 @@ go 1.25.0
 
 require modernc.org/sqlite v1.57.0
 
-require github.com/gantry-tools/gantry-core v0.2.0
+require github.com/gantry-tools/gantry-core v0.2.1-0.20260914150650-e6c20ace0e08
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

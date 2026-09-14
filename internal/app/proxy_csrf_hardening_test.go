@@ -68,7 +68,7 @@ func TestHostAndOriginValidation(t *testing.T) {
 
 func TestCSRFProtectsSessionMutations(t *testing.T) {
 	a := hardeningTestApp(t)
-	acct, err := a.accounts.initial("Administrator", "admin", "password")
+	acct, err := a.accounts.initial("Administrator", "admin", "admin@example.com", "password")
 	if err != nil {
 		t.Fatal(err)
 	}

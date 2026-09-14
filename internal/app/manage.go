@@ -46,9 +46,9 @@ func (a *App) manageUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Action, ID, Display, Username, Password string
-		Enabled                                 bool
-		Roles                                   []string
+		Action, ID, Display, Username, Email, Password string
+		Enabled                                        bool
+		Roles                                          []string
 	}
 	if !decode(w, r, &input) {
 		return
@@ -56,7 +56,7 @@ func (a *App) manageUsers(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch input.Action {
 	case "create-account":
-		_, err = a.accounts.create(input.Display, input.Username, input.Password, input.Roles)
+		_, err = a.accounts.create(input.Display, input.Username, input.Email, input.Password, input.Roles)
 	case "update-account":
 		err = a.accounts.update(input.ID, input.Display, input.Enabled, input.Roles)
 	case "reset-password":

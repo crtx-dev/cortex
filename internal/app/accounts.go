@@ -55,12 +55,12 @@ func loadCortexAccounts(dir string) (*cortexAccounts, error) {
 
 // SetupAdministrator performs first-run setup without starting the HTTP
 // server. It is intended for local provisioning tools and automation.
-func SetupAdministrator(dir, display, username, password string) error {
+func SetupAdministrator(dir, display, username, email, password string) error {
 	accounts, err := loadCortexAccounts(dir)
 	if err != nil {
 		return err
 	}
-	_, err = accounts.initial(display, username, password)
+	_, err = accounts.initial(display, username, email, password)
 	return err
 }
 
@@ -130,20 +130,20 @@ func (store *cortexAccounts) roleList() []coreauth.Role { return store.model.Rol
 func (store *cortexAccounts) account(id string) (coreauth.Account, bool) {
 	return store.model.Account(id)
 }
-func (store *cortexAccounts) authenticate(username, password string) (coreauth.Account, coreauth.Identity, bool) {
-	return store.model.AuthenticatePassword(username, password)
+func (store *cortexAccounts) authenticate(identifier, password string) (coreauth.Account, coreauth.Identity, bool) {
+	return store.model.AuthenticatePassword(identifier, password)
 }
 func (store *cortexAccounts) capabilities(id string) []string { return store.model.Capabilities(id) }
 
-func (store *cortexAccounts) create(display, username, password string, roleIDs []string) (coreauth.Account, error) {
+func (store *cortexAccounts) create(display, username, email, password string, roleIDs []string) (coreauth.Account, error) {
 	if len(roleIDs) == 0 {
 		roleIDs = []string{"user"}
 	}
-	return store.model.CreateAccount(display, username, password, roleIDs)
+	return store.model.CreateAccount(display, username, email, password, roleIDs)
 }
 
-func (store *cortexAccounts) initial(display, username, password string) (coreauth.Account, error) {
-	return store.model.CreateInitialAdministrator(display, username, password)
+func (store *cortexAccounts) initial(display, username, email, password string) (coreauth.Account, error) {
+	return store.model.CreateInitialAdministrator(display, username, email, password)
 }
 
 func (store *cortexAccounts) update(id, display string, enabled bool, roleIDs []string) error {

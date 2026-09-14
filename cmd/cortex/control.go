@@ -30,9 +30,10 @@ func runSetup(args []string) int {
 	data := fs.String("data", cortexDataDir(), "Cortex data directory")
 	display := fs.String("display-name", "Administrator", "display name")
 	username := fs.String("username", "admin", "login username")
+	email := fs.String("email", "", "login email (optional)")
 	passwordFile := fs.String("password-file", "", "file containing the password")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 || *passwordFile == "" {
-		fmt.Fprintln(os.Stderr, "usage: cortex setup --password-file FILE [--username NAME] [--display-name NAME] [--data DIR]")
+		fmt.Fprintln(os.Stderr, "usage: cortex setup --password-file FILE [--username NAME] [--email EMAIL] [--display-name NAME] [--data DIR]")
 		return 2
 	}
 	password, err := os.ReadFile(*passwordFile)
@@ -41,7 +42,7 @@ func runSetup(args []string) int {
 		return 1
 	}
 	if err = os.MkdirAll(*data, 0700); err == nil {
-		err = app.SetupAdministrator(*data, *display, *username, strings.TrimRight(string(password), "\r\n"))
+		err = app.SetupAdministrator(*data, *display, *username, *email, strings.TrimRight(string(password), "\r\n"))
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "cortex:", err)

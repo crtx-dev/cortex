@@ -421,6 +421,7 @@ func (a *App) authSetup(w http.ResponseWriter, r *http.Request) {
 	var q struct {
 		Display  string `json:"display"`
 		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 		Confirm  string `json:"confirm"`
 	}
@@ -441,7 +442,7 @@ func (a *App) authSetup(w http.ResponseWriter, r *http.Request) {
 	if q.Display == "" {
 		q.Display = q.Username
 	}
-	account, err := a.accounts.initial(q.Display, q.Username, q.Password)
+	account, err := a.accounts.initial(q.Display, q.Username, q.Email, q.Password)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
