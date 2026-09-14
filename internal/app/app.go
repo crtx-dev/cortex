@@ -180,6 +180,17 @@ func (a *App) Close() error {
 	a.stopActiveRuns()
 	return a.db.Close()
 }
+
+// Shutdown gracefully stops the HTTP server and active agent runs. It is the
+// signal path: a service stop must cancel and persist every live run (so the
+// child process group is killed and the run is classified `interrupted`)
+// instead of relying on deferred cleanup that never runs on SIGTERM.
+func (a *App) Shutdown(ctx context.Context) error {
+	a.stopActiveRuns()
+	err := a.httpServer().Shutdown(ctx)
+	_ = a.db.Close()
+	return err
+}
 func (a *App) Root() string { return a.root }
 func (a *App) ListenAndServe() error {
 	return a.httpServer().ListenAndServe()

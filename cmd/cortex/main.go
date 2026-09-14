@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/crtx-dev/cortex/internal/app"
 	"github.com/crtx-dev/cortex/internal/operations"
@@ -83,8 +89,22 @@ func main() {
 		log.Fatal(err)
 	}
 	defer srv.Close()
+	// Graceful shutdown: on SIGINT/SIGTERM stop active agent runs (cancelling
+	// the child process group and persisting `interrupted`) before the HTTP
+	// server and database close. Without this, a service stop orphans the
+	// agent child process, which keeps running and billing the provider.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("cortex: graceful shutdown: %v", err)
+		}
+	}()
 	fmt.Printf("Cortex · http://%s\nWorkspace root · %s\n", addr, srv.Root())
-	if err := srv.ListenAndServe(); err != nil {
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("cortex: %v (listener: %s)", err, addr)
 	}
 }
