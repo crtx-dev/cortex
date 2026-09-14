@@ -566,7 +566,7 @@ async function syncServerConversations(){
   serverReady=true;if(!Object.keys(sessions).length)newSession('',false);if(!sessions[activeId])activeId=Object.keys(sessions)[0];setActiveSession(activeId);saveUiPrefs();renderAll()
 }
 function startFreshSession(){sessions={};closedSessions=[];activeId='';serverReady=false;newSession('',false);serverReady=true;saveUiPrefs();renderAll()}
-async function boot(){const st=await api('/api/status');root=st.root;loadSessions();restoreComposerHeight();await Promise.all([loadSettings(),agentStatus()]);startFreshSession()}
+async function boot(){document.querySelector('.app header').hidden=false;document.querySelector('.app main').hidden=false;const st=await api('/api/status');root=st.root;loadSessions();restoreComposerHeight();await Promise.all([loadSettings(),agentStatus()]);startFreshSession()}
 $('#newSession').onclick=e=>{e.stopPropagation();toggleSessionMenu()};$('#newSameWorkspace').onclick=newSessionSameWorkspace;$('#newWorkspace').onclick=newWorkspaceSession;$('#workspaceBtn').onclick=openWorkspacePicker;$('#closeWorkspace').onclick=$('#cancelWorkspace').onclick=()=>$('#workspaceModal').hidden=true;$('#browserUp').onclick=()=>browse(parentPath(browserPath));$('#chooseWorkspace').onclick=chooseWorkspace;
 $('#sessionsBtn').onclick=$('#allSessions').onclick=showSessionsPage;$('#closeSessions').onclick=showAgentPage;$('#sessionsPrev').onclick=()=>{if(historyPage>0){historyPage--;renderSessionHistory()}};$('#sessionsNext').onclick=()=>{if((historyPage+1)*HISTORY_PAGE_SIZE<historyItems.length){historyPage++;renderSessionHistory()}};
 window.addEventListener('beforeunload',e=>{if(!Object.values(sessions).some(s=>s.busy))return;e.preventDefault();e.returnValue=''});
@@ -611,6 +611,6 @@ $('#startTOTP').onclick=async()=>{try{const x=await api('/api/auth/totp/begin',{
 $('#enableTOTP').onclick=async()=>{try{await api('/api/auth/totp/enable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:$('#totpCode').value})});$('#totpCode').value='';await loadSecuritySettings();toast('Two-factor authentication enabled')}catch(e){toast(e.message)}};
 $('#disableTOTP').onclick=async()=>{const password=prompt('Enter your Cortex password to disable two-factor authentication');if(!password)return;try{await api('/api/auth/totp/disable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});await loadSecuritySettings();toast('Two-factor authentication disabled')}catch(e){toast(e.message)}};
 $('#saveGoogle').onclick=async()=>{try{await api('/api/auth/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:$('#googleEnabled').checked,ClientID:$('#googleClientID').value,ClientSecret:$('#googleClientSecret').value,Email:$('#googleEmail').value})});$('#googleClientSecret').value='';await loadSecuritySettings();toast('Google auth saved')}catch(e){toast(e.message)}};
-$('#logout').onclick=async()=>{await api('/api/auth/logout',{method:'POST'});location.reload()};
+$('#logout').onclick=async()=>{await api('/api/auth/logout',{method:'POST'});location.reload()};$('#logoutBtn').onclick=$('#logout').onclick;
 
 loadAuthState().then(ok=>{if(ok)return boot()}).catch(e=>toast(e.message));
