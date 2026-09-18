@@ -1,7 +1,9 @@
 package app
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
 	coreauth "github.com/gantry-tools/gantry-core/auth"
 )
@@ -56,7 +58,11 @@ func (a *App) manageUsers(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch input.Action {
 	case "create-account":
-		_, err = a.accounts.create(input.Display, input.Username, input.Email, input.Password, input.Roles)
+		if strings.TrimSpace(input.Username) == "" || strings.TrimSpace(input.Email) == "" {
+			err = errors.New("username and email are required")
+		} else {
+			_, err = a.accounts.create(input.Username, input.Username, input.Email, input.Password, input.Roles)
+		}
 	case "update-account":
 		err = a.accounts.update(input.ID, input.Display, input.Enabled, input.Roles)
 	case "reset-password":

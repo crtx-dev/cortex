@@ -11,6 +11,8 @@
   "pagination-template": "",
   "pagination-separator": "",
   "pagination-pages": 0,
+  "project-fingerprint": "",
+  "hierarchy-fingerprint": "",
   "dependencies": [
     "content/index.html",
     "templates/template.html"

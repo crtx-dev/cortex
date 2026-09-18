@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	coreauth "github.com/gantry-tools/gantry-core/auth"
 )
 
 func TestConcurrentFirstRunSetupHasOneWinner(t *testing.T) {
@@ -209,5 +212,75 @@ func TestSetupRequiresUsernameAndEmailAndLoginWorksByEither(t *testing.T) {
 	}
 	if got := login("admin@example.com"); got != http.StatusOK {
 		t.Fatalf("login by email=%d, want 200", got)
+	}
+}
+
+func TestManageCreateAccountRequiresUsernameEmailAndDerivesDisplay(t *testing.T) {
+	a := hardeningTestApp(t)
+	h := a.httpServer().Handler
+	do := func(method, path, body string, cookie *http.Cookie, csrf string) *httptest.ResponseRecorder {
+		var reader io.Reader
+		if body != "" {
+			reader = strings.NewReader(body)
+		}
+		req := httptest.NewRequest(method, "http://127.0.0.1"+path, reader)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", "http://127.0.0.1")
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		if csrf != "" {
+			req.Header.Set("X-Cortex-CSRF", csrf)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	// First-run setup establishes an administrator session.
+	rec := do(http.MethodPost, "/api/auth/setup", `{"username":"admin","email":"admin@example.com","password":"mudblood","confirm":"mudblood"}`, nil, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("setup=%d %s", rec.Code, rec.Body.String())
+	}
+	var cookies []*http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		cookies = append(cookies, c)
+	}
+	adminCookie := cookies[0]
+	state := do(http.MethodGet, "/api/auth/state", "", adminCookie, "")
+	var auth map[string]any
+	if err := json.NewDecoder(state.Body).Decode(&auth); err != nil {
+		t.Fatal(err)
+	}
+	csrf := auth["csrf"].(string)
+
+	// create-account without username or email must be rejected.
+	if got := do(http.MethodPost, "/api/manage/users", `{"action":"create-account","email":"u@example.com","password":"mudblood","roles":["user"]}`, adminCookie, csrf).Code; got != http.StatusBadRequest {
+		t.Fatalf("create without username=%d, want 400", got)
+	}
+	if got := do(http.MethodPost, "/api/manage/users", `{"action":"create-account","username":"u","password":"mudblood","roles":["user"]}`, adminCookie, csrf).Code; got != http.StatusBadRequest {
+		t.Fatalf("create without email=%d, want 400", got)
+	}
+	// A valid create derives DisplayName from Username.
+	if got := do(http.MethodPost, "/api/manage/users", `{"action":"create-account","username":"u","email":"u@example.com","password":"mudblood","roles":["user"]}`, adminCookie, csrf).Code; got != http.StatusOK {
+		t.Fatalf("create=%d", got)
+	}
+	var created *coreauth.Account
+	for _, acct := range a.accounts.list() {
+		for _, identity := range acct.Identities {
+			if identity.Type == "password" && strings.EqualFold(identity.Username, "u") {
+				c := acct
+				created = &c
+			}
+		}
+	}
+	if created == nil {
+		t.Fatalf("created account not found by username")
+	}
+	if created.DisplayName != "u" {
+		t.Fatalf("created account display=%q, want derived from username", created.DisplayName)
+	}
+	// The new account can sign in by username.
+	if got := do(http.MethodPost, "/api/auth/login", `{"username":"u","password":"mudblood"}`, nil, "").Code; got != http.StatusOK {
+		t.Fatalf("login by username=%d, want 200", got)
 	}
 }
