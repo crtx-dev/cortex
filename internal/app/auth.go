@@ -419,13 +419,22 @@ func (a *App) authSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var q struct {
-		Display  string `json:"display"`
 		Username string `json:"username"`
 		Email    string `json:"email"`
 		Password string `json:"password"`
 		Confirm  string `json:"confirm"`
 	}
 	if !decode(w, r, &q) {
+		return
+	}
+	q.Username = strings.TrimSpace(q.Username)
+	q.Email = strings.TrimSpace(q.Email)
+	if q.Username == "" {
+		http.Error(w, "username is required", 400)
+		return
+	}
+	if q.Email == "" || !strings.Contains(q.Email, "@") {
+		http.Error(w, "a valid email is required", 400)
 		return
 	}
 	if len(q.Password) < 7 {
@@ -436,13 +445,7 @@ func (a *App) authSetup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "passwords do not match", 400)
 		return
 	}
-	if q.Username == "" {
-		q.Username = "admin"
-	}
-	if q.Display == "" {
-		q.Display = q.Username
-	}
-	account, err := a.accounts.initial(q.Display, q.Username, q.Email, q.Password)
+	account, err := a.accounts.initial(q.Username, q.Username, q.Email, q.Password)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return

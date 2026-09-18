@@ -86,6 +86,7 @@ type serviceManager struct {
 type unitMeta struct {
 	listen string
 	health string
+	data   string
 }
 
 type serviceOptions struct {
@@ -110,7 +111,9 @@ func (o serviceOptions) listener() string {
 	return net.JoinHostPort(strings.TrimSpace(o.host), strings.TrimSpace(o.port))
 }
 
-func userUnitPath(unitName string) string {
+// userUnitPath returns the installed per-user systemd unit path. It is a var
+// seam so tests can redirect the managed unit without touching the host.
+var userUnitPath = func(unitName string) string {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		base = os.Getenv("HOME")
@@ -577,7 +580,7 @@ func renderCortexUnitBody(exe string, opts serviceOptions) string {
 // integrity header carrying the SHA-256 of the managed content below it, the
 // runtime metadata (listen/health) used by `service status`, and the body.
 func buildCortexUnit(exe string, opts serviceOptions) string {
-	content := "# cortex-listen: " + opts.listener() + "\n# cortex-health: " + cortexHealthPath + "\n" + renderCortexUnitBody(exe, opts)
+	content := "# cortex-listen: " + opts.listener() + "\n# cortex-data: " + opts.data + "\n# cortex-health: " + cortexHealthPath + "\n" + renderCortexUnitBody(exe, opts)
 	sum := sha256.Sum256([]byte(content))
 	header := cortexUnitMarker + "\n" + cortexManagedPrefix + "v1 sha256=" + hex.EncodeToString(sum[:]) + "\n"
 	return header + content
@@ -617,7 +620,7 @@ func readManagedUnit(path string) (unitMeta, error) {
 		return unitMeta{}, errModified
 	}
 	meta := unitMeta{}
-	listenSeen, healthSeen := 0, 0
+	listenSeen, healthSeen, dataSeen := 0, 0, 0
 	for _, ln := range lines[2:] {
 		switch {
 		case strings.HasPrefix(ln, "# cortex-listen: "):
@@ -626,6 +629,12 @@ func readManagedUnit(path string) (unitMeta, error) {
 				return unitMeta{}, errMalformed
 			}
 			meta.listen = strings.TrimSpace(strings.TrimPrefix(ln, "# cortex-listen: "))
+		case strings.HasPrefix(ln, "# cortex-data: "):
+			dataSeen++
+			if dataSeen > 1 {
+				return unitMeta{}, errMalformed
+			}
+			meta.data = strings.TrimSpace(strings.TrimPrefix(ln, "# cortex-data: "))
 		case strings.HasPrefix(ln, "# cortex-health: "):
 			healthSeen++
 			if healthSeen > 1 {
@@ -643,7 +652,39 @@ func readManagedUnit(path string) (unitMeta, error) {
 	if err := validateNoControl(meta.listen, "listen"); err != nil {
 		return unitMeta{}, errMalformed
 	}
+	// The data-dir marker is additive: older managed units predate it and stay
+	// valid for lifecycle operations, but destructive commands that need the
+	// installed data directory must fail closed when it is absent.
+	if dataSeen == 1 {
+		if meta.data == "" {
+			return unitMeta{}, errMalformed
+		}
+		if err := validateNoControl(meta.data, "data-dir"); err != nil {
+			return unitMeta{}, errMalformed
+		}
+	}
 	return meta, nil
+}
+
+// InstalledDataDir returns the data directory recorded by the installed
+// managed service unit. The boolean is false when Cortex is not installed. A
+// present but foreign, malformed or modified unit is an error so destructive
+// CLI operations never silently operate on a different directory. An existing
+// managed unit that predates the data-dir marker is likewise an error: its
+// data directory cannot be known, so the caller must supply --data explicitly
+// rather than fall back.
+func InstalledDataDir() (string, bool, error) {
+	meta, err := readManagedUnit(userUnitPath("cortex.service"))
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("cannot use installed service configuration: %w", err)
+	}
+	if strings.TrimSpace(meta.data) == "" {
+		return "", false, fmt.Errorf("installed service unit predates data-directory metadata; pass --data explicitly")
+	}
+	return meta.data, true, nil
 }
 
 // writeManagedUnit writes a unit atomically. An existing file is only replaced

@@ -24,16 +24,35 @@ func cortexDataDir() string {
 	return ".cortex"
 }
 
+// resolveCortexDataDir applies the canonical instance-resolution precedence
+// shared by setup/config/reset: an explicit --data wins, then CORTEX_DATA_DIR,
+// then the data directory recorded by the installed managed service, then the
+// normal default. It fails closed rather than silently targeting a different
+// directory when the installed unit exists but cannot be used safely.
+func resolveCortexDataDir(fs *flag.FlagSet, explicit string) (string, error) {
+	dir := strings.TrimSpace(explicit)
+	if !flagProvided(fs, "data") && strings.TrimSpace(os.Getenv("CORTEX_DATA_DIR")) == "" {
+		installed, installedOK, installedErr := InstalledDataDir()
+		if installedErr != nil {
+			return "", installedErr
+		}
+		if installedOK {
+			dir = installed
+		}
+	}
+	return dir, nil
+}
+
 func runSetup(args []string) int {
 	fs := flag.NewFlagSet("cortex setup", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	data := fs.String("data", cortexDataDir(), "Cortex data directory")
-	display := fs.String("display-name", "Administrator", "display name")
-	username := fs.String("username", "admin", "login username")
-	email := fs.String("email", "", "login email (optional)")
+	display := fs.String("display-name", "", "deprecated; ignored (display is derived from username)")
+	username := fs.String("username", "", "login username")
+	email := fs.String("email", "", "login email")
 	passwordFile := fs.String("password-file", "", "file containing the password")
-	if err := fs.Parse(args); err != nil || fs.NArg() != 0 || *passwordFile == "" {
-		fmt.Fprintln(os.Stderr, "usage: cortex setup --password-file FILE [--username NAME] [--email EMAIL] [--display-name NAME] [--data DIR]")
+	if err := fs.Parse(args); err != nil || fs.NArg() != 0 || *passwordFile == "" || *username == "" {
+		fmt.Fprintln(os.Stderr, "usage: cortex setup --username NAME --email EMAIL --password-file FILE [--data DIR]")
 		return 2
 	}
 	password, err := os.ReadFile(*passwordFile)
@@ -41,8 +60,21 @@ func runSetup(args []string) int {
 		fmt.Fprintln(os.Stderr, "cortex:", err)
 		return 1
 	}
-	if err = os.MkdirAll(*data, 0700); err == nil {
-		err = app.SetupAdministrator(*data, *display, *username, *email, strings.TrimRight(string(password), "\r\n"))
+	if strings.TrimSpace(*email) == "" {
+		fmt.Fprintln(os.Stderr, "cortex: --email is required")
+		return 2
+	}
+	dataDir, err := resolveCortexDataDir(fs, *data)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "cortex:", err)
+		return 1
+	}
+	displayName := *username
+	if strings.TrimSpace(*display) != "" {
+		displayName = *display
+	}
+	if err = os.MkdirAll(dataDir, 0700); err == nil {
+		err = app.SetupAdministrator(dataDir, displayName, *username, *email, strings.TrimRight(string(password), "\r\n"))
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "cortex:", err)
@@ -61,11 +93,16 @@ func runConfig(args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: cortex config show [--data DIR] [--json]")
 		return 2
 	}
-	value := map[string]string{"project": "cortex", "dataDir": *data}
+	dataDir, err := resolveCortexDataDir(fs, *data)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "cortex:", err)
+		return 1
+	}
+	value := map[string]string{"project": "cortex", "dataDir": dataDir}
 	if *jsonOutput {
 		_ = json.NewEncoder(os.Stdout).Encode(value)
 	} else {
-		fmt.Printf("Data directory: %s\n", *data)
+		fmt.Printf("Data directory: %s\n", dataDir)
 	}
 	return 0
 }
@@ -90,7 +127,12 @@ func runReset(args []string) int {
 		fmt.Fprintln(os.Stderr, "cortex: confirmation did not match; nothing changed")
 		return 1
 	}
-	if err := resetCortex(*data, *all); err != nil {
+	dataDir, err := resolveCortexDataDir(fs, *data)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "cortex:", err)
+		return 1
+	}
+	if err := resetCortex(dataDir, *all); err != nil {
 		fmt.Fprintln(os.Stderr, "cortex:", err)
 		return 1
 	}
@@ -123,7 +165,11 @@ func resetCortex(dataDir string, all bool) error {
 	if err := os.MkdirAll(backup, 0700); err != nil {
 		return err
 	}
-	for _, name := range []string{"users.json", "roles.json"} {
+	// Authentication reset clears only account state. roles.json holds role
+	// definitions and must be preserved: it is configuration, not
+	// authentication state, and deleting it would silently drop custom roles.
+	// Cortex sessions are in-memory only, so no session file needs clearing.
+	for _, name := range []string{"users.json"} {
 		source := filepath.Join(dataDir, name)
 		if _, err := os.Stat(source); os.IsNotExist(err) {
 			continue

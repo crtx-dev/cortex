@@ -51,6 +51,8 @@ jobs:
         run: node tests/conversation-save.test.js
       - name: markdown render smoke
         run: node tests/markdown-render-smoke.js
+      - name: account-creation contract
+        run: node tests/account-creation-contract.js
       - name: release smoke
         run: tests/release-smoke.sh
       - name: git diff --check

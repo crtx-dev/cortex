@@ -21,6 +21,7 @@ jobs:
           node tests/agent-ux.test.js
           node tests/conversation-save.test.js
           node tests/markdown-render-smoke.js
+          node tests/account-creation-contract.js
           node tests/session-navigation.test.js
       - name: Build six release archives
         run: |

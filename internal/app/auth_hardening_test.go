@@ -21,7 +21,7 @@ func TestConcurrentFirstRunSetupHasOneWinner(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/auth/setup", strings.NewReader(`{"password":"mudblood","confirm":"mudblood"}`))
+			req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/auth/setup", strings.NewReader(`{"username":"admin","email":"admin@example.com","password":"mudblood","confirm":"mudblood"}`))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Origin", "http://127.0.0.1")
 			a.httpServer().Handler.ServeHTTP(rec, req)
@@ -171,5 +171,43 @@ func TestLoginFailureStoreIsBounded(t *testing.T) {
 	}
 	if a.loginAllowed(req) {
 		t.Fatal("login throttle allowed excess attempt")
+	}
+}
+
+func TestSetupRequiresUsernameAndEmailAndLoginWorksByEither(t *testing.T) {
+	a := hardeningTestApp(t)
+	h := a.httpServer().Handler
+	// Empty username must be rejected.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/auth/setup", strings.NewReader(`{"email":"admin@example.com","password":"mudblood","confirm":"mudblood"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://127.0.0.1")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty-username setup=%d, want 400", rec.Code)
+	}
+	// Valid setup (username, email, password, confirm) succeeds.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/auth/setup", strings.NewReader(`{"username":"admin","email":"admin@example.com","password":"mudblood","confirm":"mudblood"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://127.0.0.1")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("setup=%d %s", rec.Code, rec.Body.String())
+	}
+	// Login by username works.
+	login := func(identifier string) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/auth/login", strings.NewReader(`{"username":"`+identifier+`","password":"mudblood"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", "http://127.0.0.1")
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if got := login("admin"); got != http.StatusOK {
+		t.Fatalf("login by username=%d, want 200", got)
+	}
+	if got := login("admin@example.com"); got != http.StatusOK {
+		t.Fatalf("login by email=%d, want 200", got)
 	}
 }

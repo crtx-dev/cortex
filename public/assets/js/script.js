@@ -532,7 +532,7 @@ async function browse(path){
 }
 async function openWorkspacePicker(){const s=active();$('#workspaceModal').hidden=false;try{await browse(s.workspace||root)}catch(e){toast(e.message)}}
 function chooseWorkspace(){const s=active();s.workspace=browserPath;s.openCodeSession='';s.title='';s.events=[];s.workspaceStatus='available';saveUiPrefs();saveSessionToServer(activeId);$('#workspaceModal').hidden=true;renderAll();toast('Workspace selected')}
-async function copySession(){const s=active(),labels={user:'You',assistant:'Agent',tool:'Tool',error:'Error',done:'Status'},text=s.events.filter(x=>x.kind!=='image').map(x=>`${labels[x.kind]||'Agent'}:\n${x.text}`).join('\n\n');if(!text)return toast('Nothing to copy');await navigator.clipboard.writeText(text);toast('Session copied')}
+async function copySession(){const s=active(),labels={user:'You',assistant:'Agent',tool:'Tool',error:'Error',done:'Status'},text=s.events.filter(x=>x.kind!=='image').map(x=>`${labels[x.kind]||'Agent'}:\n${x.text}`).join('\n\n');if(!text)return toast('Nothing to copy');const button=$('#copy'),width=button.getBoundingClientRect().width;await navigator.clipboard.writeText(text);button.style.width=width+'px';button.textContent='✓';clearTimeout(copySession.timer);copySession.timer=setTimeout(()=>{button.textContent='Copy session';button.style.width=''},1800)}
 function applyComposerHeight(value){
   const card=document.querySelector('.agent-card');if(!card)return;
   const max=Math.max(170,Math.floor(card.getBoundingClientRect().height*.55));
@@ -600,8 +600,8 @@ async function loadAuthState(){
   }
   gate.hidden=true;return true
 }
-function authError(e){$('#authError').textContent=e?.message||String(e)}
-$('#setupForm').onsubmit=async e=>{e.preventDefault();$('#authError').textContent='';try{await api('/api/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({display:$('#setupDisplay').value,username:$('#setupUsername').value,email:$('#setupEmail').value,password:$('#setupPassword').value,confirm:$('#setupConfirm').value})});if(!finishAuthentication())await bootAuthenticated()}catch(x){authError(x)}};
+function authError(e){const message=e?.message||String(e);$('#authError').textContent=message==='invalid credentials'?'Username/email or password is incorrect.':message}
+$('#setupForm').onsubmit=async e=>{e.preventDefault();$('#authError').textContent='';if($('#setupPassword').value!==$('#setupConfirm').value){$('#authError').textContent='Passwords do not match.';return}try{await api('/api/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('#setupUsername').value,email:$('#setupEmail').value,password:$('#setupPassword').value,confirm:$('#setupConfirm').value})});if(!finishAuthentication())await bootAuthenticated()}catch(x){authError(x)}};
 $('#loginForm').onsubmit=async e=>{e.preventDefault();$('#authError').textContent='';try{await api('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('#loginUsername').value,password:$('#loginPassword').value,TOTP:$('#loginTOTP').value})});if(!finishAuthentication())await bootAuthenticated()}catch(x){authError(x)}};
 function showSettingsTab(name){const security=name==='security';$('#providerSettings').hidden=security;$('#securitySettings').hidden=!security;$('#providerTab').classList.toggle('active',!security);$('#securityTab').classList.toggle('active',security);if(security)loadSecuritySettings()}
 $('#providerTab').onclick=()=>showSettingsTab('providers');$('#securityTab').onclick=()=>showSettingsTab('security');
