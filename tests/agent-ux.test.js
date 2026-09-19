@@ -205,6 +205,38 @@ function feedNode(scrollTop, scrollHeight, clientHeight) {
   return f;
 }
 
+test('copy session feedback is short-lived with a stable button width', async () => {
+  const ctx = loadContext();
+  let clipboardCalls = 0;
+  ctx.navigator = { clipboard: { writeText: async (t) => { clipboardCalls++; ctx.__copiedText = t; } } };
+  run(ctx, "sessions={a:{id:'a',workspace:'/w',events:[{kind:'user',text:'hello'},{kind:'assistant',text:'world'}]}};activeId='a'");
+  await run(ctx, 'copySession()');
+  // The button flips to the checkmark without changing width, then restores
+  // after ~500ms (not a long-lived state).
+  if (run(ctx, "$('#copy').textContent") !== '✓') throw new Error('copy feedback did not show the checkmark');
+  const widthStyle = run(ctx, "$('#copy').style.width");
+  if (!widthStyle) throw new Error('copy feedback must pin the button width to prevent layout jump');
+  if (clipboardCalls !== 1) throw new Error('clipboard write not called exactly once');
+  if (run(ctx, '__copiedText') !== 'You:\nhello\n\nAgent:\nworld') throw new Error('clipboard payload mismatch: ' + JSON.stringify(run(ctx, '__copiedText')));
+  await settle(600);
+  if (run(ctx, "$('#copy').textContent") !== 'Copy session') throw new Error('copy feedback did not restore the label within ~500ms');
+  if (run(ctx, "$('#copy').style.width") !== '') throw new Error('copy feedback must release the pinned width after restoring');
+});
+
+test('copy session shows no checkmark when clipboard write fails', async () => {
+  const ctx = loadContext();
+  ctx.navigator = { clipboard: { writeText: async () => { throw new Error('clipboard blocked'); } } };
+  run(ctx, "sessions={a:{id:'a',workspace:'/w',events:[{kind:'user',text:'hello'}]}};activeId='a'");
+  run(ctx, "$('#copy').textContent='Copy session'");
+  let threw = false;
+  try { await run(ctx, 'copySession()'); } catch (e) { threw = true; }
+  // The handler awaits the clipboard write; a failure must reject (and the
+  // caller surfaces it) without ever showing the checkmark.
+  if (threw !== true) throw new Error('clipboard failure must reject the copy promise');
+  if (run(ctx, "$('#copy').textContent") !== 'Copy session') throw new Error('clipboard failure must not show the checkmark');
+  if (run(ctx, "$('#copy').style.width")) throw new Error('clipboard failure must not pin the button width');
+});
+
 test('nearBottom: at bottom follows new event', async () => {
   const ctx = loadContext();
   const feed = feedNode(1000, 1000, 100);
