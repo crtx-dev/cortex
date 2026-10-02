@@ -1240,6 +1240,10 @@ func (a *App) agentModels(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, map[string]any{"provider": providerID, "models": zenModels})
 		return
 	}
+	if p.ID == "opencode-go" {
+		jsonOut(w, map[string]any{"provider": providerID, "models": goModels})
+		return
+	}
 	modelID := a.configuredModel(providerID)
 	if modelID == "" {
 		modelID = p.DefaultModel
@@ -1568,6 +1572,42 @@ func zenProviderConfig(selected string) map[string]any {
 	addFamily("opencode-google", "@ai-sdk/google", zenGoogleModels)
 	addFamily("opencode-chat", "@ai-sdk/openai-compatible", zenChatModels)
 	return providers
+}
+
+// goModels is the OpenCode Go catalogue snapshot from
+// https://opencode.ai/zen/go/v1/models on 2026-10-02. OpenCode Go is a
+// first-class OpenCode provider, so runs use the native opencode-go provider
+// identity rather than Cortex reconstructing the gateway's per-model protocol.
+// Refresh this list from the models endpoint when OpenCode changes the plan.
+var goModels = []string{
+	"grok-4.6",
+	"glm-5.3-flash",
+	"glm-5.3",
+	"glm-5.2",
+	"glm-5.1",
+	"gpt-5.6-luna",
+	"kimi-k3",
+	"kimi-k2.7-code",
+	"kimi-k2.6",
+	"longcat-2.0",
+	"mimo-v2.5",
+	"mimo-v2.5-pro",
+	"minimax-m3",
+	"minimax-m2.7",
+	"minimax-m2.5",
+	"muse-spark-1.3-contributor",
+	"muse-spark-1.2-contributor",
+	"qwen3.8-max",
+	"qwen3.8-flash",
+	"qwen3.7-max",
+	"qwen3.7-plus",
+	"qwen3.6-plus",
+	"deepseek-v4.1-flash",
+	"deepseek-v4-pro",
+	"deepseek-v4-flash",
+	"deepseek-v4-flash-vision-exp",
+	"hy4-preview",
+	"hy3",
 }
 
 func modelRefFor(provider Provider, modelID string) string {

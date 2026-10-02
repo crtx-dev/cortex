@@ -91,6 +91,7 @@ type publicSettings struct {
 
 var providers = []Provider{
 	{"opencode", "OpenCode Zen", "OpenCode Zen API key", "opencode", "deepseek-v4-flash", "key"},
+	{"opencode-go", "OpenCode Go", "OpenCode Go API key", "opencode-go", "deepseek-v4-flash", "key"},
 	{"openrouter", "OpenRouter", "OpenRouter API key", "openrouter", "anthropic/claude-sonnet-4.5", "key"},
 	{"openai", "OpenAI API", "OpenAI API key", "openai", "gpt-5.2", "key"},
 	{"anthropic", "Anthropic API", "Anthropic API key", "anthropic", "claude-sonnet-4-20250514", "key"},

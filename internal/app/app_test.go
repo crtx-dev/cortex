@@ -382,6 +382,65 @@ func TestAgentModelsZenUsesHardcodedCatalogue(t *testing.T) {
 	}
 }
 
+func TestOpenCodeGoConfigUsesNativeProvider(t *testing.T) {
+	p, ok := providerByID("opencode-go")
+	if !ok {
+		t.Fatal("opencode-go provider missing")
+	}
+	if p.Label != "OpenCode Go" || p.OpenCodeID != "opencode-go" || p.DefaultModel != "deepseek-v4-flash" {
+		t.Fatalf("provider = %#v", p)
+	}
+	b, err := cortexOpenCodeConfig(p, "deepseek-v4-flash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg["model"] != "opencode-go/deepseek-v4-flash" {
+		t.Fatalf("model = %#v", cfg["model"])
+	}
+	providers, _ := cfg["provider"].(map[string]any)
+	entry, _ := providers["opencode-go"].(map[string]any)
+	opts, _ := entry["options"].(map[string]any)
+	if opts["apiKey"] != "{env:CORTEX_PROVIDER_API_KEY}" {
+		t.Fatalf("options = %#v", opts)
+	}
+	if _, ok := opts["baseURL"]; ok {
+		t.Fatalf("OpenCode Go should use OpenCode's native provider routing, got %#v", opts)
+	}
+}
+
+func TestAgentModelsGoUsesHardcodedCatalogue(t *testing.T) {
+	a := hardeningTestApp(t)
+	r := httptest.NewRequest("GET", "/api/agent/models?provider=opencode-go", nil)
+	w := httptest.NewRecorder()
+	a.agentModels(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	var out struct {
+		Models []string `json:"models"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Models) != len(goModels) {
+		t.Fatalf("models = %d, want %d", len(out.Models), len(goModels))
+	}
+	found := false
+	for _, model := range out.Models {
+		if model == "deepseek-v4-flash" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("deepseek-v4-flash missing from OpenCode Go catalogue")
+	}
+}
+
 func TestPasswordHashAndVerify(t *testing.T) {
 	h := passwordHash("correct horse battery staple")
 	if !verifyPassword(h, "correct horse battery staple") {
